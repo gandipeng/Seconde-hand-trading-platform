@@ -33,7 +33,7 @@
 | 前端 | JSP 2.3 + JSTL 1.2 |
 | 数据库 | MySQL 8.x |
 | 构建工具 | Maven 3.x |
-| 部署容器 | Apache Tomcat（WAR 包部署） |
+| 部署容器 | Apache Tomcat 9.0（WAR 包部署） |
 
 ---
 
@@ -61,7 +61,7 @@ minzu-secondhand/
 ### 环境要求
 
 - JDK 21+
-- Apache Tomcat 10.x
+- Apache Tomcat 9.0+
 - MySQL 8.x
 - Maven 3.6+
 
@@ -96,7 +96,7 @@ minzu-secondhand/
 
 5. **部署到 Tomcat**
 
-   将生成的 `target/minzu-secondhand.war` 复制到 Tomcat 的 `webapps/` 目录，启动 Tomcat 后访问：
+   将生成的 `target/minzu-secondhand.war` 复制到 Tomcat 9.0 的 `webapps/` 目录，启动 Tomcat 后访问：
    ```
    http://localhost:8080/minzu-secondhand/
    ```
