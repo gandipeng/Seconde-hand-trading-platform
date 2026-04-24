@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>用户登录</title>
+    <title>用户注册</title>
     <style>
         * {
             box-sizing: border-box;
@@ -48,8 +48,8 @@
         }
 
         .container {
-            max-width: 460px;
-            margin: 48px auto;
+            max-width: 520px;
+            margin: 40px auto;
             padding: 0 16px;
         }
 
@@ -92,6 +92,10 @@
             font-weight: bold;
         }
 
+        .required {
+            color: #ff4d4f;
+        }
+
         .form-item input {
             width: 100%;
             padding: 11px 12px;
@@ -107,15 +111,10 @@
             box-shadow: 0 0 0 3px rgba(22,119,255,0.12);
         }
 
-        .success-box {
-            margin-bottom: 18px;
-            padding: 12px 14px;
-            background: #f6ffed;
-            border: 1px solid #b7eb8f;
-            color: #389e0d;
-            border-radius: 8px;
-            font-size: 14px;
-            box-shadow: 0 4px 12px rgba(56, 158, 13, 0.06);
+        .hint {
+            margin-top: 6px;
+            font-size: 12px;
+            color: #999;
         }
 
         .error-box {
@@ -128,14 +127,20 @@
             font-size: 14px;
         }
 
+        .btn-row {
+            margin-top: 22px;
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
         .btn-primary {
-            width: 100%;
             background: #1677ff;
             color: white;
             border: none;
-            padding: 12px 0;
+            padding: 11px 22px;
             border-radius: 8px;
-            font-size: 15px;
+            font-size: 14px;
             cursor: pointer;
         }
 
@@ -143,11 +148,26 @@
             background: #0958d9;
         }
 
+        .btn-default {
+            display: inline-block;
+            text-decoration: none;
+            color: #555;
+            background: #fff;
+            border: 1px solid #d9d9d9;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .btn-default:hover {
+            color: #1677ff;
+            border-color: #1677ff;
+        }
+
         .bottom-link {
             margin-top: 16px;
             font-size: 14px;
             color: #666;
-            text-align: center;
         }
 
         .bottom-link a {
@@ -162,58 +182,60 @@
     <div class="logo">🏫 民大二手交易平台</div>
     <div class="nav">
         <a href="${pageContext.request.contextPath}/index.jsp">首页</a>
-        <a href="${pageContext.request.contextPath}/register">注册</a>
+        <a href="${pageContext.request.contextPath}/login">登录</a>
     </div>
 </div>
 
 <div class="container">
     <div class="card">
         <div class="card-header">
-            <h2>用户登录</h2>
-            <p>登录后即可发布商品、查看个人信息和管理交易记录。</p>
+            <h2>用户注册</h2>
+            <p>注册后即可登录平台，发布和管理自己的商品。</p>
         </div>
 
         <div class="form-area">
-            <%
-                String successMsg = (String) session.getAttribute("successMsg");
-                if (successMsg != null) {
-                    session.removeAttribute("successMsg");
-                }
-
-                String sessionErrorMsg = (String) session.getAttribute("errorMsg");
-                if (sessionErrorMsg != null) {
-                    session.removeAttribute("errorMsg");
-                }
-            %>
-
-            <% if (successMsg != null) { %>
-                <div class="success-box"><%= successMsg %></div>
-            <% } %>
-
-            <% if (sessionErrorMsg != null) { %>
-                <div class="error-box"><%= sessionErrorMsg %></div>
-            <% } else if (request.getAttribute("errorMsg") != null) { %>
+            <% if (request.getAttribute("errorMsg") != null) { %>
                 <div class="error-box"><%= request.getAttribute("errorMsg") %></div>
             <% } %>
 
-            <form action="${pageContext.request.contextPath}/login" method="post">
+            <form action="${pageContext.request.contextPath}/register" method="post">
                 <div class="form-item">
-                    <label>学号/工号</label>
-                    <input type="text" name="account"
-                           value="<%= request.getParameter("account") == null ? "" : request.getParameter("account") %>"
-                           required>
+                    <label>学号/工号 <span class="required">*</span></label>
+                    <input type="text" name="studentOrStaffNo" required
+                           value="<%= request.getParameter("studentOrStaffNo") == null ? "" : request.getParameter("studentOrStaffNo") %>">
                 </div>
 
                 <div class="form-item">
-                    <label>密码</label>
+                    <label>真实姓名 <span class="required">*</span></label>
+                    <input type="text" name="realName" required
+                           value="<%= request.getParameter("realName") == null ? "" : request.getParameter("realName") %>">
+                </div>
+
+                <div class="form-item">
+                    <label>昵称</label>
+                    <input type="text" name="nickname"
+                           value="<%= request.getParameter("nickname") == null ? "" : request.getParameter("nickname") %>">
+                </div>
+
+                <div class="form-item">
+                    <label>密码 <span class="required">*</span></label>
                     <input type="password" name="password" required>
+                    <div class="hint">建议至少 6 位。</div>
                 </div>
 
-                <button type="submit" class="btn-primary">立即登录</button>
+                <div class="form-item">
+                    <label>确认密码 <span class="required">*</span></label>
+                    <input type="password" name="confirmPassword" required>
+                </div>
+
+                <div class="btn-row">
+                    <button type="submit" class="btn-primary">立即注册</button>
+                    <a href="${pageContext.request.contextPath}/login" class="btn-default">返回登录</a>
+                </div>
             </form>
 
             <div class="bottom-link">
-                还没有账号？<a href="${pageContext.request.contextPath}/register">立即注册</a>
+                已有账号？<a href="${pageContext.request.contextPath}/login">去登录</a>
             </div>
         </div>
     </div>
