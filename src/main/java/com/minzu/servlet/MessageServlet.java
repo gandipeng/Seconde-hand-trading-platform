@@ -75,7 +75,6 @@ public class MessageServlet extends HttpServlet {
         }
 
         if (receiverId == loginUser.getUserId()) {
-            // 不能给自己发消息
             response.sendRedirect(request.getContextPath() + "/messages");
             return;
         }
@@ -102,7 +101,6 @@ public class MessageServlet extends HttpServlet {
             e.printStackTrace();
         }
 
-        // 发送完跳回聊天页
         String redirect = request.getContextPath() + "/messages?with=" + receiverId;
         if (productId != null) redirect += "&productId=" + productId;
         response.sendRedirect(redirect);
@@ -113,7 +111,6 @@ public class MessageServlet extends HttpServlet {
                                       User loginUser) throws ServletException, IOException {
         int me = loginUser.getUserId();
 
-        // 每个对话只取最新一条消息，并统计未读数
         String sql =
             "SELECT " +
             "  other_id, " +
@@ -172,6 +169,13 @@ public class MessageServlet extends HttpServlet {
         try {
             otherId = Integer.parseInt(withStr.trim());
         } catch (NumberFormatException e) {
+            // with 参数格式错误，回列表页
+            response.sendRedirect(request.getContextPath() + "/messages");
+            return;
+        }
+
+        // 不能跟自己聊
+        if (otherId == me) {
             response.sendRedirect(request.getContextPath() + "/messages");
             return;
         }
@@ -181,31 +185,43 @@ public class MessageServlet extends HttpServlet {
             try { productId = Integer.parseInt(productIdStr.trim()); } catch (Exception ignored) {}
         }
 
+        // 提前设置兼容默认值，防止异常时 JSP 拿到 null 后 NPE
+        request.setAttribute("otherId",       otherId);
+        request.setAttribute("otherNickname", "用户" + otherId);
+        request.setAttribute("product",       null);
+        request.setAttribute("chatList",      new ArrayList<>());
+        request.setAttribute("productId",     productId);
+
         try (Connection conn = DBUtil.getConnection()) {
 
             // 查对方昵称
-            String userSql = "SELECT user_id, nickname FROM users WHERE user_id = ?";
-            String otherNickname = "用户" + otherId;
+            String userSql = "SELECT nickname FROM users WHERE user_id = ?";
             try (PreparedStatement ps = conn.prepareStatement(userSql)) {
                 ps.setInt(1, otherId);
                 try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) otherNickname = rs.getString("nickname");
+                    if (rs.next()) {
+                        request.setAttribute("otherNickname", rs.getString("nickname"));
+                    } else {
+                        // 对方用户不存在，直接回列表
+                        response.sendRedirect(request.getContextPath() + "/messages");
+                        return;
+                    }
                 }
             }
 
             // 查商品信息（如有）
-            Map<String, Object> product = null;
             if (productId != null) {
                 String pSql = "SELECT product_id, title, cover_image_url, price FROM products WHERE product_id = ?";
                 try (PreparedStatement ps = conn.prepareStatement(pSql)) {
                     ps.setInt(1, productId);
                     try (ResultSet rs = ps.executeQuery()) {
                         if (rs.next()) {
-                            product = new LinkedHashMap<>();
+                            Map<String, Object> product = new LinkedHashMap<>();
                             product.put("productId",  rs.getInt("product_id"));
                             product.put("title",       rs.getString("title"));
                             product.put("coverUrl",    rs.getString("cover_image_url"));
                             product.put("price",       rs.getBigDecimal("price"));
+                            request.setAttribute("product", product);
                         }
                     }
                 }
@@ -241,8 +257,9 @@ public class MessageServlet extends HttpServlet {
                     }
                 }
             }
+            request.setAttribute("chatList", chatList);
 
-            // 把未读消息标记为已读
+            // 将未读消息标记为已读
             String markSql = "UPDATE messages SET is_read=1 " +
                              "WHERE receiver_id=? AND sender_id=? AND is_read=0";
             try (PreparedStatement ps = conn.prepareStatement(markSql)) {
@@ -251,15 +268,10 @@ public class MessageServlet extends HttpServlet {
                 ps.executeUpdate();
             }
 
-            request.setAttribute("otherId",       otherId);
-            request.setAttribute("otherNickname", otherNickname);
-            request.setAttribute("product",       product);
-            request.setAttribute("chatList",      chatList);
-            request.setAttribute("productId",     productId);
-
         } catch (Exception e) {
             e.printStackTrace();
-            request.setAttribute("errorMsg", "加载失败：" + e.getMessage());
+            // 属性已在 try 之前设好默认值，这里只需设置错误提示
+            request.setAttribute("errorMsg", "加载聊天记录失败，请稍后重试：" + e.getMessage());
         }
 
         request.getRequestDispatcher("/message-chat.jsp").forward(request, response);
