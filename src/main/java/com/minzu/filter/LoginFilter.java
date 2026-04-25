@@ -1,5 +1,7 @@
 package com.minzu.filter;
 
+import com.minzu.entity.User;
+
 import javax.servlet.*;
 import javax.servlet.annotation.WebFilter;
 import javax.servlet.http.*;
@@ -56,19 +58,27 @@ public class LoginFilter implements Filter {
             }
         }
 
-        // 3. 已登录放行
-        HttpSession session  = req.getSession(false);
-        boolean isLoggedIn   = (session != null && session.getAttribute("loginUser") != null);
+        // 3. 已登录：取出用户对象备用
+        HttpSession session = req.getSession(false);
+        User loginUser = (session != null) ? (User) session.getAttribute("loginUser") : null;
 
-        if (isLoggedIn) {
-            chain.doFilter(request, response);
+        if (loginUser == null) {
+            // 未登录：写提示并重定向登录页
+            req.getSession().setAttribute("errorMsg", "请先登录后再访问该页面");
+            resp.sendRedirect(contextPath + "/login");
             return;
         }
 
-        // 4. 未登录：写提示信息并重定向到登录页
-        HttpSession newSession = req.getSession();
-        newSession.setAttribute("errorMsg", "请先登录后再访问该页面");
-        resp.sendRedirect(contextPath + "/login");
-        // ★ return 确保 Filter 链不再继续执行
+        // 4. 管理员路由拦截：/admin/* 仅允许 ADMIN 角色访问
+        if (path.startsWith("/admin/") || path.equals("/admin")) {
+            if (!"ADMIN".equals(loginUser.getRoleCode())) {
+                resp.sendError(HttpServletResponse.SC_FORBIDDEN,
+                        "权限不足，该页面仅管理员可访问");
+                return;
+            }
+        }
+
+        // 5. 通过所有检查，放行
+        chain.doFilter(request, response);
     }
 }
