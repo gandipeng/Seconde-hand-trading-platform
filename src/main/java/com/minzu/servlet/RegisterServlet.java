@@ -1,6 +1,7 @@
 package com.minzu.servlet;
 
 import com.minzu.util.DBUtil;
+import com.minzu.util.PasswordUtil;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -26,10 +27,10 @@ public class RegisterServlet extends HttpServlet {
         request.setCharacterEncoding("UTF-8");
 
         String studentOrStaffNo = request.getParameter("studentOrStaffNo");
-        String realName = request.getParameter("realName");
-        String nickname = request.getParameter("nickname");
-        String password = request.getParameter("password");
-        String confirmPassword = request.getParameter("confirmPassword");
+        String realName         = request.getParameter("realName");
+        String nickname         = request.getParameter("nickname");
+        String password         = request.getParameter("password");
+        String confirmPassword  = request.getParameter("confirmPassword");
 
         if (studentOrStaffNo == null || studentOrStaffNo.trim().isEmpty()
                 || realName == null || realName.trim().isEmpty()
@@ -66,6 +67,9 @@ public class RegisterServlet extends HttpServlet {
                 return;
             }
 
+            // 使用 BCrypt 哈希存储密码
+            String passwordHash = PasswordUtil.hash(password.trim());
+
             String insertSql = "INSERT INTO users " +
                     "(student_or_staff_no, real_name, nickname, password_hash, role_code, created_at, updated_at) " +
                     "VALUES (?, ?, ?, ?, 'STUDENT', NOW(), NOW())";
@@ -74,7 +78,7 @@ public class RegisterServlet extends HttpServlet {
             psInsert.setString(1, studentOrStaffNo.trim());
             psInsert.setString(2, realName.trim());
             psInsert.setString(3, nickname == null ? null : nickname.trim());
-            psInsert.setString(4, password.trim());
+            psInsert.setString(4, passwordHash);  // 存储哈希而非明文
 
             int rows = psInsert.executeUpdate();
             if (rows > 0) {
