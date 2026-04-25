@@ -5,6 +5,10 @@
     String type = (String) request.getAttribute("type");
     if (type == null) type = "buy";
 
+    int currentPage  = request.getAttribute("currentPage")  != null ? (int) request.getAttribute("currentPage")  : 1;
+    int totalPages   = request.getAttribute("totalPages")   != null ? (int) request.getAttribute("totalPages")   : 1;
+    int totalCount   = request.getAttribute("totalCount")   != null ? (int) request.getAttribute("totalCount")   : 0;
+
     String successMsg = (String) session.getAttribute("successMsg");
     if (successMsg != null) session.removeAttribute("successMsg");
 
@@ -15,19 +19,19 @@
 %>
 <%!
     public String statusText(String s) {
-        if ("CREATED".equals(s))     return "待交易";
+        if ("CREATED".equals(s))      return "待交易";
         if ("PAID_OFFLINE".equals(s)) return "线下已成交";
-        if ("CANCELLED".equals(s))   return "已取消";
-        if ("COMPLETED".equals(s))   return "已完成";
-        if ("DISPUTED".equals(s))    return "纠纷中";
+        if ("CANCELLED".equals(s))    return "已取消";
+        if ("COMPLETED".equals(s))    return "已完成";
+        if ("DISPUTED".equals(s))     return "纠纷中";
         return s != null ? s : "未知";
     }
     public String statusColor(String s) {
-        if ("CREATED".equals(s))     return "#1677ff";
+        if ("CREATED".equals(s))      return "#1677ff";
         if ("PAID_OFFLINE".equals(s)) return "#fa8c16";
-        if ("CANCELLED".equals(s))   return "#8c8c8c";
-        if ("COMPLETED".equals(s))   return "#52c41a";
-        if ("DISPUTED".equals(s))    return "#f5222d";
+        if ("CANCELLED".equals(s))    return "#8c8c8c";
+        if ("COMPLETED".equals(s))    return "#52c41a";
+        if ("DISPUTED".equals(s))     return "#f5222d";
         return "#999";
     }
 %>
@@ -84,6 +88,15 @@
             font-size: 12px; margin-bottom: 10px; color: #fff;
         }
         .meta { font-size: 13px; color: #666; line-height: 2; }
+        .pickup-code {
+            display: inline-block;
+            background: #fff7e6; color: #d46b08;
+            border: 1px solid #ffd591;
+            border-radius: 6px; padding: 2px 12px;
+            font-size: 20px; font-weight: bold; letter-spacing: 4px;
+            margin: 4px 0;
+        }
+        .pickup-label { font-size: 12px; color: #999; margin-right: 6px; }
         .actions { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
         .btn {
             padding: 8px 16px; border-radius: 8px; font-size: 13px;
@@ -100,6 +113,22 @@
             text-align: center; color: #999; box-shadow: 0 4px 18px rgba(0,0,0,0.05);
         }
         .empty-icon { font-size: 48px; margin-bottom: 12px; }
+        /* 分页 */
+        .pagination {
+            display: flex; justify-content: center; align-items: center;
+            gap: 8px; margin-top: 28px; flex-wrap: wrap;
+        }
+        .page-btn {
+            min-width: 36px; height: 36px; padding: 0 10px;
+            border-radius: 8px; border: 1px solid #ddd;
+            background: #fff; color: #555; text-decoration: none;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 14px; transition: all 0.18s;
+        }
+        .page-btn:hover { border-color: #1677ff; color: #1677ff; }
+        .page-btn.active { background: #1677ff; color: #fff; border-color: #1677ff; }
+        .page-btn.disabled { pointer-events: none; color: #bbb; border-color: #eee; }
+        .page-info { font-size: 13px; color: #999; margin-left: 4px; }
         @media (max-width: 600px) {
             .card-row { flex-direction: column; }
             .cover, .cover-placeholder { width: 100%; height: 180px; }
@@ -176,7 +205,13 @@
                         <br>
                         <% if (o.get("buyerNote") != null) { %>买家备注：<%= o.get("buyerNote") %><br><% } %>
                         <% if (o.get("sellerNote") != null) { %>卖家备注：<%= o.get("sellerNote") %><br><% } %>
-                        <% if (o.get("pickupCode") != null) { %>取货码：<strong><%= o.get("pickupCode") %></strong><br><% } %>
+                        <%-- 取货码显示：线下成交或已完成时显示 --%>
+                        <% String pc = (String) o.get("pickupCode");
+                           if (pc != null && !pc.isEmpty() &&
+                               ("PAID_OFFLINE".equals(status) || "COMPLETED".equals(status))) { %>
+                            <span class="pickup-label">取货码</span>
+                            <span class="pickup-code"><%= pc %></span><br>
+                        <% } %>
                     </div>
 
                     <div class="actions">
@@ -199,7 +234,7 @@
                         <%-- 卖家：CREATED 可确认线下成交 --%>
                         <% if ("sell".equals(type) && "CREATED".equals(status)) { %>
                             <form action="${pageContext.request.contextPath}/orders" method="post" style="margin:0;"
-                                  onsubmit="return confirm('确认已与买家完成线下交易吗？');">
+                                  onsubmit="return confirm('确认已与买家完成线下交易吗？确认后将自动生成取货码。');">
                                 <input type="hidden" name="action" value="paid">
                                 <input type="hidden" name="orderId" value="<%= o.get("orderId") %>">
                                 <input type="hidden" name="type" value="sell">
@@ -233,6 +268,34 @@
             </div>
         </div>
     <% }} %>
+
+    <%-- 分页导航 --%>
+    <% if (totalPages > 1) { %>
+    <div class="pagination">
+        <a class="page-btn <%= currentPage == 1 ? \"disabled\" : \"\" %>"
+           href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage - 1 %>">&laquo;</a>
+
+        <% int startP = Math.max(1, currentPage - 2);
+           int endP   = Math.min(totalPages, currentPage + 2);
+           if (startP > 1) { %>
+            <a class="page-btn" href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=1">1</a>
+            <% if (startP > 2) { %><span style="color:#bbb">…</span><% } %>
+        <% }
+           for (int p = startP; p <= endP; p++) { %>
+            <a class="page-btn <%= p == currentPage ? \"active\" : \"\" %>"
+               href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= p %>"><%= p %></a>
+        <% }
+           if (endP < totalPages) { %>
+            <% if (endP < totalPages - 1) { %><span style="color:#bbb">…</span><% } %>
+            <a class="page-btn" href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= totalPages %>"><%= totalPages %></a>
+        <% } %>
+
+        <a class="page-btn <%= currentPage == totalPages ? \"disabled\" : \"\" %>"
+           href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage + 1 %>">&raquo;</a>
+
+        <span class="page-info">共 <%= totalCount %> 条记录</span>
+    </div>
+    <% } %>
 </div>
 
 </body>

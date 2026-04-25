@@ -14,6 +14,8 @@ import java.util.*;
 @WebServlet("/orders")
 public class OrderServlet extends HttpServlet {
 
+    private static final int PAGE_SIZE = 10;
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -30,6 +32,37 @@ public class OrderServlet extends HttpServlet {
             type = "buy";
         }
 
+        // 分页参数
+        int page = 1;
+        try {
+            String pageStr = request.getParameter("page");
+            if (pageStr != null) page = Math.max(1, Integer.parseInt(pageStr.trim()));
+        } catch (NumberFormatException ignored) {}
+
+        int offset = (page - 1) * PAGE_SIZE;
+
+        String whereClause = "sell".equals(type) ? "o.seller_id = ?" : "o.buyer_id = ?";
+
+        // 总数查询
+        String countSql = "SELECT COUNT(*) FROM orders o WHERE " + whereClause;
+        int totalCount = 0;
+        try (
+            Connection conn = DBUtil.getConnection();
+            PreparedStatement ps = conn.prepareStatement(countSql)
+        ) {
+            ps.setInt(1, loginUser.getUserId());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) totalCount = rs.getInt(1);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        int totalPages = (int) Math.ceil((double) totalCount / PAGE_SIZE);
+        if (totalPages < 1) totalPages = 1;
+        if (page > totalPages) page = totalPages;
+        offset = (page - 1) * PAGE_SIZE;
+
         String sql =
                 "SELECT o.order_id, o.order_no, o.product_id, o.deal_price, o.quantity, " +
                 "o.order_status, o.buyer_note, o.seller_note, o.pickup_code, " +
@@ -40,8 +73,9 @@ public class OrderServlet extends HttpServlet {
                 "LEFT JOIN products p ON o.product_id = p.product_id " +
                 "LEFT JOIN users bu ON o.buyer_id = bu.user_id " +
                 "LEFT JOIN users se ON o.seller_id = se.user_id " +
-                "WHERE " + ("sell".equals(type) ? "o.seller_id = ?" : "o.buyer_id = ?") +
-                " ORDER BY o.created_at DESC";
+                "WHERE " + whereClause +
+                " ORDER BY o.created_at DESC" +
+                " LIMIT ? OFFSET ?";
 
         List<Map<String, Object>> orderList = new ArrayList<>();
 
@@ -50,6 +84,8 @@ public class OrderServlet extends HttpServlet {
                 PreparedStatement ps = conn.prepareStatement(sql)
         ) {
             ps.setInt(1, loginUser.getUserId());
+            ps.setInt(2, PAGE_SIZE);
+            ps.setInt(3, offset);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -78,6 +114,9 @@ public class OrderServlet extends HttpServlet {
 
             request.setAttribute("type", type);
             request.setAttribute("orderList", orderList);
+            request.setAttribute("currentPage", page);
+            request.setAttribute("totalPages", totalPages);
+            request.setAttribute("totalCount", totalCount);
             request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
 
         } catch (Exception e) {
@@ -85,6 +124,9 @@ public class OrderServlet extends HttpServlet {
             request.setAttribute("errorMsg", "加载订单失败：" + e.getMessage());
             request.setAttribute("type", type);
             request.setAttribute("orderList", orderList);
+            request.setAttribute("currentPage", 1);
+            request.setAttribute("totalPages", 1);
+            request.setAttribute("totalCount", 0);
             request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
         }
     }
@@ -186,7 +228,7 @@ public class OrderServlet extends HttpServlet {
                     checkPs.setInt(2, loginUser.getUserId());
                     try (ResultSet checkRs = checkPs.executeQuery()) {
                         if (checkRs.next()) {
-                            request.getSession().setAttribute("errorMsg", "你已经对该商品发起过订单，请在\"我的订单\"中查看");
+                            request.getSession().setAttribute("errorMsg", "你已经对该商品发起过订单，请在\"\u6211的订单\"中查看");
                             response.sendRedirect(request.getContextPath() + "/orders?type=buy");
                             return;
                         }
@@ -222,6 +264,11 @@ public class OrderServlet extends HttpServlet {
         }
     }
 
+    /** 生成 6 位数字取货码 */
+    private String generatePickupCode() {
+        return String.format("%06d", new Random().nextInt(1_000_000));
+    }
+
     private void updateOrderStatus(HttpServletRequest request, HttpServletResponse response,
                                    User loginUser, String targetStatus) throws IOException {
 
@@ -250,7 +297,8 @@ public class OrderServlet extends HttpServlet {
             sql = "UPDATE orders SET order_status='CANCELLED', cancelled_at=NOW() " +
                   "WHERE order_id=? AND buyer_id=? AND order_status='CREATED'";
         } else if ("PAID_OFFLINE".equals(targetStatus)) {
-            sql = "UPDATE orders SET order_status='PAID_OFFLINE', paid_at=NOW() " +
+            // ★ 卖家确认线下成交时同步写入 pickup_code
+            sql = "UPDATE orders SET order_status='PAID_OFFLINE', paid_at=NOW(), pickup_code=? " +
                   "WHERE order_id=? AND seller_id=? AND order_status='CREATED'";
         } else if ("COMPLETED".equals(targetStatus)) {
             sql = "UPDATE orders SET order_status='COMPLETED', completed_at=NOW() " +
@@ -268,10 +316,14 @@ public class OrderServlet extends HttpServlet {
                 Connection conn = DBUtil.getConnection();
                 PreparedStatement ps = conn.prepareStatement(sql)
         ) {
-            // 关闭自动提交，为 COMPLETED + 商品联动做事务准备
             conn.setAutoCommit(false);
 
-            if ("DISPUTED".equals(targetStatus)) {
+            if ("PAID_OFFLINE".equals(targetStatus)) {
+                // pickup_code 占第 1 个参数
+                ps.setString(1, generatePickupCode());
+                ps.setInt(2, orderId);
+                ps.setInt(3, loginUser.getUserId());
+            } else if ("DISPUTED".equals(targetStatus)) {
                 ps.setInt(1, orderId);
                 ps.setInt(2, loginUser.getUserId());
                 ps.setInt(3, loginUser.getUserId());
@@ -283,7 +335,7 @@ public class OrderServlet extends HttpServlet {
             int rows = ps.executeUpdate();
 
             if (rows > 0) {
-                // ★ 订单完成后联动将商品改为 SOLD
+                // 订单完成后联动商品改为 SOLD
                 if ("COMPLETED".equals(targetStatus)) {
                     String getProductIdSql = "SELECT product_id FROM orders WHERE order_id = ?";
                     try (PreparedStatement getPs = conn.prepareStatement(getProductIdSql)) {
@@ -297,7 +349,6 @@ public class OrderServlet extends HttpServlet {
                                 try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
                                     updPs.setInt(1, productId);
                                     updPs.executeUpdate();
-                                    // 即使商品已不是 ON_SALE（如已手动改过）也不影响订单完成
                                 }
                             }
                         }
@@ -305,8 +356,10 @@ public class OrderServlet extends HttpServlet {
                 }
 
                 conn.commit();
-                request.getSession().setAttribute("successMsg",
-                        "COMPLETED".equals(targetStatus) ? "订单已完成，商品已标记为已售" : "订单状态已更新");
+                String msg = "COMPLETED".equals(targetStatus) ? "订单已完成，商品已标记为已售"
+                           : "PAID_OFFLINE".equals(targetStatus) ? "已确认线下成交，取货码已生成"
+                           : "订单状态已更新";
+                request.getSession().setAttribute("successMsg", msg);
             } else {
                 conn.rollback();
                 request.getSession().setAttribute("errorMsg", "操作失败，可能订单状态已变更或无权操作");
