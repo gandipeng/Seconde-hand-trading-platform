@@ -2,6 +2,7 @@ package com.minzu.servlet;
 
 import com.minzu.entity.User;
 import com.minzu.util.DBUtil;
+import com.minzu.util.PasswordUtil;
 
 import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
@@ -26,7 +27,7 @@ public class LoginServlet extends HttpServlet {
 
         request.setCharacterEncoding("UTF-8");
 
-        String account = request.getParameter("account");
+        String account  = request.getParameter("account");
         String password = request.getParameter("password");
 
         if (account == null || account.trim().isEmpty()
@@ -37,8 +38,8 @@ public class LoginServlet extends HttpServlet {
         }
 
         String sql = "SELECT user_id, student_or_staff_no, real_name, nickname, role_code, account_status, password_hash " +
-                "FROM users " +
-                "WHERE student_or_staff_no = ? AND IFNULL(is_deleted, 0) = 0";
+                     "FROM users " +
+                     "WHERE student_or_staff_no = ? AND IFNULL(is_deleted, 0) = 0";
 
         try (
                 Connection conn = DBUtil.getConnection();
@@ -53,10 +54,11 @@ public class LoginServlet extends HttpServlet {
                     return;
                 }
 
-                String dbPassword = rs.getString("password_hash");
+                String storedHash   = rs.getString("password_hash");
                 String accountStatus = rs.getString("account_status");
 
-                if (!password.trim().equals(dbPassword)) {
+                // 使用 PasswordUtil.verify() 同时兴容 BCrypt 哈希和老明文
+                if (!PasswordUtil.verify(password.trim(), storedHash)) {
                     request.setAttribute("errorMsg", "账号或密码错误");
                     request.getRequestDispatcher("/login.jsp").forward(request, response);
                     return;
