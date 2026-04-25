@@ -55,9 +55,9 @@ public class EditProductServlet extends HttpServlet {
 
         try (Connection conn = DBUtil.getConnection()) {
 
-            // 查询商品，必须是自己的商品
+            // fix: product_status → publish_status（与数据库字段一致）
             String sql = "SELECT p.product_id, p.seller_id, p.category_id, p.title, p.product_desc, " +
-                    "p.price, p.original_price, p.condition_level, p.cover_image_url, p.product_status " +
+                    "p.price, p.original_price, p.condition_level, p.cover_image_url, p.publish_status " +
                     "FROM products p " +
                     "WHERE p.product_id = ? AND p.seller_id = ? AND IFNULL(p.is_deleted,0) = 0";
 
@@ -82,7 +82,8 @@ public class EditProductServlet extends HttpServlet {
                     product.setOriginalPrice(rs.getBigDecimal("original_price"));
                     product.setConditionLevel(rs.getString("condition_level"));
                     product.setCoverImageUrl(rs.getString("cover_image_url"));
-                    product.setProductStatus(rs.getString("product_status"));
+                    // fix: 读取字段名同步修正为 publish_status
+                    product.setProductStatus(rs.getString("publish_status"));
 
                     request.setAttribute("product", product);
                 }
