@@ -10,12 +10,14 @@
     boolean canDelete = false;
     boolean isOwner = false;
     boolean isFavorited = false;
+    boolean isSold = false;
     if (loginUser != null && product != null) {
         boolean isAdmin = "ADMIN".equalsIgnoreCase(loginUser.getRoleCode());
         isOwner = loginUser.getUserId() == product.getSellerId();
         canDelete = isAdmin || isOwner;
         Boolean favAttr = (Boolean) request.getAttribute("isFavorited");
         isFavorited = favAttr != null && favAttr;
+        isSold = "SOLD".equals(product.getProductStatus());
     }
 %>
 <!DOCTYPE html>
@@ -61,6 +63,18 @@
         .price-row { margin-bottom: 18px; padding: 16px 18px; background: #fff7f7; border-radius: 12px; border: 1px solid #ffe1e1; }
         .price-now { color: #ff4d4f; font-size: 32px; font-weight: bold; }
         .price-old { margin-top: 6px; color: #999; font-size: 14px; text-decoration: line-through; }
+        .sold-badge {
+            display: inline-block; margin-left: 12px;
+            background: #d9d9d9; color: #595959;
+            font-size: 13px; font-weight: bold;
+            padding: 2px 10px; border-radius: 20px;
+            vertical-align: middle;
+        }
+        .sold-tip {
+            margin-top: 10px; padding: 10px 14px;
+            background: #f5f5f5; border-radius: 8px;
+            color: #888; font-size: 13px;
+        }
 
         .meta-panel { background: #fafbfc; border: 1px solid #eef0f3; border-radius: 12px; padding: 14px 16px; }
         .meta-item { display: flex; padding: 10px 0; border-bottom: 1px dashed #e8ebef; font-size: 14px; }
@@ -183,12 +197,18 @@
             </div>
 
             <div class="info-box">
-                <h1 class="title"><%= product.getTitle() %></h1>
+                <h1 class="title">
+                    <%= product.getTitle() %>
+                    <% if (isSold) { %><span class="sold-badge">已售出</span><% } %>
+                </h1>
 
                 <div class="price-row">
                     <div class="price-now">¥ <%= product.getPrice() %></div>
                     <% if (product.getOriginalPrice() != null) { %>
                         <div class="price-old">原价：¥ <%= product.getOriginalPrice() %></div>
+                    <% } %>
+                    <% if (isSold) { %>
+                        <div class="sold-tip">该商品已售出，您可以浏览其他商品或联系卖家了解更多。</div>
                     <% } %>
                 </div>
 
@@ -207,7 +227,7 @@
                 <div class="btn-row">
                     <a href="${pageContext.request.contextPath}/product-list" class="btn btn-default">返回列表</a>
 
-                    <%-- 收藏按钮（自己的商品不显示） --%>
+                    <%-- 收藏按鈕（自己的商品不显示） --%>
                     <% if (loginUser != null && !isOwner) { %>
                         <button id="favBtn"
                                 class="btn btn-fav <%= isFavorited ? "active" : "" %>"
@@ -221,10 +241,10 @@
                         </a>
                     <% } %>
 
-                    <%-- 发起交易按钮（非商品本人、已登录、商品可用） --%>
+                    <%-- 发起交易按鈕：非商品本人、已登录、且商品未售出 --%>
                     <% if (loginUser == null) { %>
                         <a href="${pageContext.request.contextPath}/login" class="btn btn-order">🛒 登录后发起交易</a>
-                    <% } else if (!isOwner) { %>
+                    <% } else if (!isOwner && !isSold) { %>
                         <form action="${pageContext.request.contextPath}/orders" method="post"
                               style="display:inline-block;margin:0;"
                               onsubmit="return confirm('确定要向卖家发起交易请求吗？');">
