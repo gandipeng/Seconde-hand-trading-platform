@@ -9,6 +9,8 @@ import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.*;
 import java.io.IOException;
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 
 @WebServlet("/product-detail")
 public class ProductDetailServlet extends HttpServlet {
@@ -33,7 +35,7 @@ public class ProductDetailServlet extends HttpServlet {
 
         int productId;
         try {
-            productId = Integer.parseInt(productIdStr);
+            productId = Integer.parseInt(productIdStr.trim());
         } catch (NumberFormatException e) {
             request.setAttribute("errorMsg", "商品ID格式错误");
             request.getRequestDispatcher("/error.jsp").forward(request, response);
@@ -42,17 +44,17 @@ public class ProductDetailServlet extends HttpServlet {
 
         String sql =
                 "SELECT p.product_id, p.seller_id, u.real_name AS seller_name, " +
-                        "p.category_id, c.category_name, p.title, p.product_desc, " +
-                        "p.price, p.original_price, p.condition_level, p.cover_image_url, " +
-                        "p.publish_status, p.view_count, p.favorite_count, p.created_at " +
-                        "FROM products p " +
-                        "LEFT JOIN users u ON p.seller_id = u.user_id " +
-                        "LEFT JOIN categories c ON p.category_id = c.category_id " +
-                        "WHERE p.product_id = ? AND p.is_deleted = 0";
+                "p.category_id, c.category_name, p.title, p.product_desc, " +
+                "p.price, p.original_price, p.condition_level, p.cover_image_url, " +
+                "p.publish_status, p.view_count, p.favorite_count, p.created_at " +
+                "FROM products p " +
+                "LEFT JOIN users u ON p.seller_id = u.user_id " +
+                "LEFT JOIN categories c ON p.category_id = c.category_id " +
+                "WHERE p.product_id = ? AND p.is_deleted = 0";
 
         try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)
+            Connection conn = DBUtil.getConnection();
+            PreparedStatement ps = conn.prepareStatement(sql)
         ) {
             ps.setInt(1, productId);
 
@@ -74,10 +76,20 @@ public class ProductDetailServlet extends HttpServlet {
                     p.setViewCount(rs.getInt("view_count"));
                     p.setFavoriteCount(rs.getInt("favorite_count"));
                     p.setCreatedAt(rs.getTimestamp("created_at"));
-// 查询详情图列表
-                    java.util.List<String> detailImages = new java.util.ArrayList<>();
-                    String imageSql = "SELECT image_url FROM product_images WHERE product_id = ? ORDER BY sort_order ASC, image_id ASC";
 
+                    // ① 浏览量 +1
+                    try (PreparedStatement viewPs = conn.prepareStatement(
+                            "UPDATE products SET view_count = view_count + 1 WHERE product_id = ?")) {
+                        viewPs.setInt(1, productId);
+                        viewPs.executeUpdate();
+                        // 同步到内存对象，页面显示不会偏低 1
+                        p.setViewCount(p.getViewCount() + 1);
+                    }
+
+                    // ② 查询详情图列表
+                    List<String> detailImages = new ArrayList<>();
+                    String imageSql = "SELECT image_url FROM product_images " +
+                            "WHERE product_id = ? ORDER BY sort_order ASC, image_id ASC";
                     try (PreparedStatement imagePs = conn.prepareStatement(imageSql)) {
                         imagePs.setInt(1, productId);
                         try (ResultSet imageRs = imagePs.executeQuery()) {
@@ -87,9 +99,22 @@ public class ProductDetailServlet extends HttpServlet {
                         }
                     }
 
-                    request.setAttribute("detailImages", detailImages);
+                    // ③ 查询当前登录用户是否已收藏该商品
+                    boolean isFavorited = false;
+                    String favSql = "SELECT 1 FROM favorites WHERE user_id = ? AND product_id = ?";
+                    try (PreparedStatement favPs = conn.prepareStatement(favSql)) {
+                        favPs.setInt(1, loginUser.getUserId());
+                        favPs.setInt(2, productId);
+                        try (ResultSet favRs = favPs.executeQuery()) {
+                            isFavorited = favRs.next();
+                        }
+                    }
+
                     request.setAttribute("product", p);
+                    request.setAttribute("detailImages", detailImages);
+                    request.setAttribute("isFavorited", isFavorited);
                     request.getRequestDispatcher("/product-detail.jsp").forward(request, response);
+
                 } else {
                     request.setAttribute("errorMsg", "商品不存在或已下架");
                     request.getRequestDispatcher("/error.jsp").forward(request, response);
