@@ -14,7 +14,6 @@
         boolean isAdmin = "ADMIN".equalsIgnoreCase(loginUser.getRoleCode());
         isOwner = loginUser.getUserId() == product.getSellerId();
         canDelete = isAdmin || isOwner;
-        // 是否已收藏由 Servlet 传入
         Boolean favAttr = (Boolean) request.getAttribute("isFavorited");
         isFavorited = favAttr != null && favAttr;
     }
@@ -84,8 +83,9 @@
         .btn-default:hover { color: #1677ff; border-color: #1677ff; }
         .btn-message { background: #f0f7ff; color: #1677ff; border: 1px solid #91caff; }
         .btn-message:hover { background: #e0efff; }
+        .btn-order { background: #ff4d4f; color: #fff; border: none; }
+        .btn-order:hover { background: #d9363e; }
 
-        /* ♥ 收藏按鈕 */
         .btn-fav {
             background: #fff; color: #999;
             border: 1px solid #d9d9d9;
@@ -131,6 +131,7 @@
             <a href="${pageContext.request.contextPath}/my-favorites">我的收藏</a>
             <a href="${pageContext.request.contextPath}/messages">私信</a>
             <a href="${pageContext.request.contextPath}/my-products">我的商品</a>
+            <a href="${pageContext.request.contextPath}/orders">我的订单</a>
         <% } else { %>
             <a href="${pageContext.request.contextPath}/login">登录</a>
         <% } %>
@@ -206,7 +207,7 @@
                 <div class="btn-row">
                     <a href="${pageContext.request.contextPath}/product-list" class="btn btn-default">返回列表</a>
 
-                    <%-- 收藏按鈕（自己的商品不显示） --%>
+                    <%-- 收藏按钮（自己的商品不显示） --%>
                     <% if (loginUser != null && !isOwner) { %>
                         <button id="favBtn"
                                 class="btn btn-fav <%= isFavorited ? "active" : "" %>"
@@ -220,7 +221,20 @@
                         </a>
                     <% } %>
 
-                    <%-- 联系卖家 --%>
+                    <%-- 发起交易按钮（非商品本人、已登录、商品可用） --%>
+                    <% if (loginUser == null) { %>
+                        <a href="${pageContext.request.contextPath}/login" class="btn btn-order">🛒 登录后发起交易</a>
+                    <% } else if (!isOwner) { %>
+                        <form action="${pageContext.request.contextPath}/orders" method="post"
+                              style="display:inline-block;margin:0;"
+                              onsubmit="return confirm('确定要向卖家发起交易请求吗？');">
+                            <input type="hidden" name="action" value="create">
+                            <input type="hidden" name="productId" value="<%= product.getProductId() %>">
+                            <button type="submit" class="btn btn-order">🛒 发起交易</button>
+                        </form>
+                    <% } %>
+
+                    <%-- 联系卖家 / 编辑商品 --%>
                     <% if (loginUser == null) { %>
                         <a href="${pageContext.request.contextPath}/login" class="btn btn-message">💬 登录后联系卖家</a>
                     <% } else if (isOwner) { %>
@@ -300,9 +314,8 @@ function toggleFavorite(productId) {
                 btn.classList.add('active');
                 icon.textContent = '♥';
                 text.textContent = '已收藏';
-                // 触发心跳动画
                 icon.style.animation = 'none';
-                icon.offsetWidth; // reflow
+                icon.offsetWidth;
                 icon.style.animation = '';
             } else {
                 btn.classList.remove('active');
