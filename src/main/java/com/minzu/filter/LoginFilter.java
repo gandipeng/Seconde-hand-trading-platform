@@ -17,12 +17,13 @@ import java.util.Set;
 public class LoginFilter implements Filter {
 
     /**
-     * 白名单：这些路径不需要登录就能访问。
-     * 包含：/login、/register、静态资源、CSS/JS/图片等。
+     * 白名单（精确匹配）：这些路径不需要登录就能访问。
      */
     private static final Set<String> WHITE_LIST_PATHS = new HashSet<>(Arrays.asList(
             "/login",
-            "/register"
+            "/register",
+            "/index.jsp",   // 首页游客可见
+            "/product-list" // 商品列表游客可见
     ));
 
     /** 白名单前缀：这些前缀开头的路径无论是否登录都放行。 */
@@ -31,6 +32,7 @@ public class LoginFilter implements Filter {
             "/css/",
             "/js/",
             "/images/",
+            "/uploads/",    // 上传图片目录
             "/fonts/",
             "/favicon.ico"
     };
@@ -52,14 +54,16 @@ public class LoginFilter implements Filter {
         HttpServletRequest  req  = (HttpServletRequest) servletRequest;
         HttpServletResponse resp = (HttpServletResponse) servletResponse;
 
-        String contextPath = req.getContextPath();          // 例： ""
-        String requestURI  = req.getRequestURI();           // 例： "/orders"
-        // 去掉 contextPath 前缀，得到相对路径
+        String contextPath = req.getContextPath();
+        String requestURI  = req.getRequestURI();
         String path = requestURI.substring(contextPath.length());
+        // 去掉 query string 后再匹配（如 /product-list?page=2 → /product-list）
+        int qIdx = path.indexOf('?');
+        String pathNoQuery = (qIdx >= 0) ? path.substring(0, qIdx) : path;
 
-        // 1. 静态资源、后缀白名单——直接放行
+        // 1. 静态资源后缀白名单——直接放行
         for (String suffix : WHITE_LIST_SUFFIXES) {
-            if (path.toLowerCase().endsWith(suffix)) {
+            if (pathNoQuery.toLowerCase().endsWith(suffix)) {
                 chain.doFilter(servletRequest, servletResponse);
                 return;
             }
@@ -67,14 +71,14 @@ public class LoginFilter implements Filter {
 
         // 2. 前缀白名单——直接放行
         for (String prefix : WHITE_LIST_PREFIXES) {
-            if (path.startsWith(prefix)) {
+            if (pathNoQuery.startsWith(prefix)) {
                 chain.doFilter(servletRequest, servletResponse);
                 return;
             }
         }
 
-        // 3. 精确白名单（/login、/register）——直接放行
-        if (WHITE_LIST_PATHS.contains(path)) {
+        // 3. 精确白名单——直接放行
+        if (WHITE_LIST_PATHS.contains(pathNoQuery)) {
             chain.doFilter(servletRequest, servletResponse);
             return;
         }
@@ -84,12 +88,13 @@ public class LoginFilter implements Filter {
         User        loginUser = (session == null) ? null : (User) session.getAttribute("loginUser");
 
         if (loginUser != null) {
-            // 已登录，放行
             chain.doFilter(servletRequest, servletResponse);
         } else {
-            // 未登录，将原始 URL 存入 session，登录后可回跳
+            // 未登录：保存完整原始 URL（含 query string），登录后回跳
             session = req.getSession(true);
-            session.setAttribute("redirectAfterLogin", requestURI);
+            String queryString = req.getQueryString();
+            String fullUrl = requestURI + (queryString != null ? "?" + queryString : "");
+            session.setAttribute("redirectAfterLogin", fullUrl);
             resp.sendRedirect(contextPath + "/login");
         }
     }

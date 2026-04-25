@@ -54,10 +54,9 @@ public class LoginServlet extends HttpServlet {
                     return;
                 }
 
-                String storedHash   = rs.getString("password_hash");
+                String storedHash    = rs.getString("password_hash");
                 String accountStatus = rs.getString("account_status");
 
-                // 使用 PasswordUtil.verify() 同时兴容 BCrypt 哈希和老明文
                 if (!PasswordUtil.verify(password.trim(), storedHash)) {
                     request.setAttribute("errorMsg", "账号或密码错误");
                     request.getRequestDispatcher("/login.jsp").forward(request, response);
@@ -93,7 +92,18 @@ public class LoginServlet extends HttpServlet {
                 HttpSession session = request.getSession();
                 session.setAttribute("loginUser", user);
 
-                response.sendRedirect(request.getContextPath() + "/index.jsp");
+                // 登录后回跳：优先跳回被拦截前的原页面，否则去首页
+                String redirect = (String) session.getAttribute("redirectAfterLogin");
+                session.removeAttribute("redirectAfterLogin");
+
+                // 过滤掉不合法的回跳地址（避免跳回登录/注册页造成死循环）
+                if (redirect == null || redirect.trim().isEmpty()
+                        || redirect.contains("/login")
+                        || redirect.contains("/register")) {
+                    redirect = request.getContextPath() + "/index.jsp";
+                }
+
+                response.sendRedirect(redirect);
             }
 
         } catch (Exception e) {
