@@ -9,10 +9,14 @@
 
     boolean canDelete = false;
     boolean isOwner = false;
+    boolean isFavorited = false;
     if (loginUser != null && product != null) {
         boolean isAdmin = "ADMIN".equalsIgnoreCase(loginUser.getRoleCode());
         isOwner = loginUser.getUserId() == product.getSellerId();
         canDelete = isAdmin || isOwner;
+        // 是否已收藏由 Servlet 传入
+        Boolean favAttr = (Boolean) request.getAttribute("isFavorited");
+        isFavorited = favAttr != null && favAttr;
     }
 %>
 <!DOCTYPE html>
@@ -20,7 +24,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>商品详情</title>
+    <title>商品详情 - 民大二手交易平台</title>
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; font-family: Arial, sans-serif; background: #f5f7fa; color: #333; }
@@ -33,8 +37,7 @@
         .header .logo { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
         .header .nav a {
             color: #fff; text-decoration: none; margin-left: 14px;
-            font-size: 14px; padding: 6px 12px; border-radius: 6px;
-            transition: background 0.2s;
+            font-size: 14px; padding: 6px 12px; border-radius: 6px; transition: background 0.2s;
         }
         .header .nav a:hover { background: rgba(255,255,255,0.16); }
 
@@ -73,24 +76,35 @@
         .detail-images { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
         .detail-image-card { background: #fff; border: 1px solid #eef0f3; border-radius: 12px; overflow: hidden; }
         .detail-image { width: 100%; height: 220px; object-fit: cover; display: block; cursor: zoom-in; background: #f0f2f5; }
-
         .empty-block { padding: 40px 20px; text-align: center; color: #999; background: #fff; border-radius: 16px; box-shadow: 0 10px 28px rgba(0,0,0,0.05); }
 
-        .btn-row { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; }
-        .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; transition: all 0.2s; }
-        .btn-primary { background: #1677ff; color: #fff; border: none; cursor: pointer; }
-        .btn-primary:hover { background: #0958d9; }
+        .btn-row { margin-top: 22px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+        .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; padding: 10px 18px; border-radius: 8px; font-size: 14px; transition: all 0.2s; border: none; cursor: pointer; }
         .btn-default { background: #fff; color: #555; border: 1px solid #d9d9d9; }
         .btn-default:hover { color: #1677ff; border-color: #1677ff; }
         .btn-message { background: #f0f7ff; color: #1677ff; border: 1px solid #91caff; }
         .btn-message:hover { background: #e0efff; }
+
+        /* ♥ 收藏按鈕 */
+        .btn-fav {
+            background: #fff; color: #999;
+            border: 1px solid #d9d9d9;
+            min-width: 100px; justify-content: center;
+        }
+        .btn-fav:hover { border-color: #ff4d4f; color: #ff4d4f; }
+        .btn-fav.active { background: #fff1f0; color: #ff4d4f; border-color: #ffb3b3; }
+        .btn-fav .fav-icon { font-size: 16px; transition: transform 0.2s; }
+        .btn-fav.active .fav-icon { animation: heartBeat 0.35s ease; }
+        @keyframes heartBeat {
+            0%   { transform: scale(1); }
+            40%  { transform: scale(1.35); }
+            70%  { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+
         .delete-form { display: inline-block; margin: 0; }
         .delete-btn { background: #fff1f0; color: #cf1322; border: 1px solid #ffccc7; padding: 10px 18px; border-radius: 8px; font-size: 14px; cursor: pointer; transition: all 0.2s; }
         .delete-btn:hover { background: #ffe7e6; }
-
-        /* 未登录提示 */
-        .login-tip { font-size: 13px; color: #999; margin-top: 4px; }
-        .login-tip a { color: #1677ff; text-decoration: none; }
 
         .image-preview-mask { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.78); z-index: 9999; align-items: center; justify-content: center; padding: 30px; }
         .image-preview-mask.show { display: flex; }
@@ -114,6 +128,7 @@
         <a href="${pageContext.request.contextPath}/index.jsp">首页</a>
         <a href="${pageContext.request.contextPath}/product-list">商品列表</a>
         <% if (loginUser != null) { %>
+            <a href="${pageContext.request.contextPath}/my-favorites">我的收藏</a>
             <a href="${pageContext.request.contextPath}/messages">私信</a>
             <a href="${pageContext.request.contextPath}/my-products">我的商品</a>
         <% } else { %>
@@ -181,29 +196,37 @@
                     <div class="meta-item"><div class="meta-label">商品分类</div><div class="meta-value"><%= product.getCategoryName() != null ? product.getCategoryName() : "未分类" %></div></div>
                     <div class="meta-item"><div class="meta-label">卖家</div><div class="meta-value"><%= product.getSellerName() != null ? product.getSellerName() : "未知卖家" %></div></div>
                     <div class="meta-item"><div class="meta-label">浏览量</div><div class="meta-value"><%= product.getViewCount() %></div></div>
-                    <div class="meta-item"><div class="meta-label">收藏量</div><div class="meta-value"><%= product.getFavoriteCount() %></div></div>
+                    <div class="meta-item">
+                        <div class="meta-label">收藏量</div>
+                        <div class="meta-value" id="favCountDisplay"><%= product.getFavoriteCount() %></div>
+                    </div>
                     <div class="meta-item"><div class="meta-label">发布时间</div><div class="meta-value"><%= product.getCreatedAt() != null ? product.getCreatedAt() : "暂无" %></div></div>
                 </div>
 
                 <div class="btn-row">
                     <a href="${pageContext.request.contextPath}/product-list" class="btn btn-default">返回列表</a>
 
-                    <%-- 联系卖家按鈕逻辑 --%>
+                    <%-- 收藏按鈕（自己的商品不显示） --%>
+                    <% if (loginUser != null && !isOwner) { %>
+                        <button id="favBtn"
+                                class="btn btn-fav <%= isFavorited ? "active" : "" %>"
+                                onclick="toggleFavorite(<%= product.getProductId() %>)">
+                            <span class="fav-icon"><%= isFavorited ? "♥" : "♡" %></span>
+                            <span id="favBtnText"><%= isFavorited ? "已收藏" : "收藏" %></span>
+                        </button>
+                    <% } else if (loginUser == null) { %>
+                        <a href="${pageContext.request.contextPath}/login" class="btn btn-fav">
+                            <span class="fav-icon">♡</span> 登录后收藏
+                        </a>
+                    <% } %>
+
+                    <%-- 联系卖家 --%>
                     <% if (loginUser == null) { %>
-                        <%-- 未登录：点击跳登录页 --%>
-                        <a href="${pageContext.request.contextPath}/login" class="btn btn-message">
-                            💬 登录后联系卖家
-                        </a>
+                        <a href="${pageContext.request.contextPath}/login" class="btn btn-message">💬 登录后联系卖家</a>
                     <% } else if (isOwner) { %>
-                        <%-- 自己的商品：展示编辑入口 --%>
-                        <a href="${pageContext.request.contextPath}/edit-product?id=<%= product.getProductId() %>"
-                           class="btn btn-message">✏️ 编辑商品</a>
+                        <a href="${pageContext.request.contextPath}/edit-product?id=<%= product.getProductId() %>" class="btn btn-message">✏️ 编辑商品</a>
                     <% } else { %>
-                        <%-- 登录且不是自己的商品：发私信 --%>
-                        <a href="${pageContext.request.contextPath}/messages?with=<%= product.getSellerId() %>&productId=<%= product.getProductId() %>"
-                           class="btn btn-message">
-                            💬 联系卖家
-                        </a>
+                        <a href="${pageContext.request.contextPath}/messages?with=<%= product.getSellerId() %>&productId=<%= product.getProductId() %>" class="btn btn-message">💬 联系卖家</a>
                     <% } %>
 
                     <% if (canDelete) { %>
@@ -255,22 +278,67 @@
 </div>
 
 <script>
-    function changeMainImage(src, btn) {
-        var mainImg = document.getElementById('mainPreviewImage');
-        if (mainImg) mainImg.src = src;
-        document.querySelectorAll('.thumb-item').forEach(function(t){ t.classList.remove('active'); });
-        if (btn) btn.classList.add('active');
-    }
-    function openImagePreview(src) {
-        document.getElementById('imagePreviewBig').src = src;
-        document.getElementById('imagePreviewMask').classList.add('show');
-    }
-    function closeImagePreview(event) {
-        if (event) event.stopPropagation();
-        document.getElementById('imagePreviewMask').classList.remove('show');
-        document.getElementById('imagePreviewBig').src = '';
-    }
-    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeImagePreview(); });
+function toggleFavorite(productId) {
+    var btn = document.getElementById('favBtn');
+    var icon = btn.querySelector('.fav-icon');
+    var text = document.getElementById('favBtnText');
+    var countEl = document.getElementById('favCountDisplay');
+    btn.disabled = true;
+
+    var form = new FormData();
+    form.append('productId', productId);
+
+    fetch('${pageContext.request.contextPath}/favorite', { method: 'POST', body: form })
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+        if (data.needLogin) {
+            window.location.href = '${pageContext.request.contextPath}/login';
+            return;
+        }
+        if (data.success) {
+            if (data.favorited) {
+                btn.classList.add('active');
+                icon.textContent = '♥';
+                text.textContent = '已收藏';
+                // 触发心跳动画
+                icon.style.animation = 'none';
+                icon.offsetWidth; // reflow
+                icon.style.animation = '';
+            } else {
+                btn.classList.remove('active');
+                icon.textContent = '♡';
+                text.textContent = '收藏';
+            }
+            if (countEl && data.count !== undefined) {
+                countEl.textContent = data.count;
+            }
+        } else {
+            alert(data.msg || '操作失败');
+        }
+        btn.disabled = false;
+    })
+    .catch(function(){
+        alert('网络错误，请重试');
+        btn.disabled = false;
+    });
+}
+
+function changeMainImage(src, btn) {
+    var mainImg = document.getElementById('mainPreviewImage');
+    if (mainImg) mainImg.src = src;
+    document.querySelectorAll('.thumb-item').forEach(function(t){ t.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+}
+function openImagePreview(src) {
+    document.getElementById('imagePreviewBig').src = src;
+    document.getElementById('imagePreviewMask').classList.add('show');
+}
+function closeImagePreview(event) {
+    if (event) event.stopPropagation();
+    document.getElementById('imagePreviewMask').classList.remove('show');
+    document.getElementById('imagePreviewBig').src = '';
+}
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeImagePreview(); });
 </script>
 
 </body>
