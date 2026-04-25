@@ -175,7 +175,8 @@ public class OrderServlet extends HttpServlet {
                     return;
                 }
 
-                if (!"AVAILABLE".equalsIgnoreCase(publishStatus)) {
+                // 修正：使用数据库实际枚举值 ON_SALE
+                if (!"ON_SALE".equalsIgnoreCase(publishStatus)) {
                     request.getSession().setAttribute("errorMsg", "该商品当前不可交易");
                     response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
                     return;
