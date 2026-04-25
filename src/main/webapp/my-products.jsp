@@ -54,12 +54,15 @@
         }
         .btn:hover { background: #0958d9; }
         .btn-sm { padding: 6px 14px; font-size: 13px; }
+        .btn-ghost {
+            background: #f5f5f5; color: #333;
+            border: 1px solid #d9d9d9;
+        }
+        .btn-ghost:hover { background: #e8f4ff; color: #1677ff; border-color: #91caff; }
         .btn-warning { background: #fa8c16; }
         .btn-warning:hover { background: #d46b08; }
         .btn-success { background: #52c41a; }
         .btn-success:hover { background: #389e0d; }
-        .btn-danger { background: #ff4d4f; }
-        .btn-danger:hover { background: #cf1322; }
 
         .filter-bar {
             display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;
@@ -209,7 +212,13 @@
 
                 <div class="card-actions">
                     <a href="${pageContext.request.contextPath}/product-detail?id=<%= p.getProductId() %>"
-                       class="btn btn-sm" style="background:#f5f5f5;color:#333;border:1px solid #d9d9d9;">查看详情</a>
+                       class="btn btn-sm btn-ghost">查看详情</a>
+
+                    <%-- 在售或下架状态才能编辑 --%>
+                    <% if (!"SOLD".equals(p.getProductStatus())) { %>
+                        <a href="${pageContext.request.contextPath}/edit-product?id=<%= p.getProductId() %>"
+                           class="btn btn-sm btn-ghost" style="color:#1677ff;border-color:#91caff;">编辑</a>
+                    <% } %>
 
                     <% if ("AVAILABLE".equals(p.getProductStatus())) { %>
                         <form method="post" action="${pageContext.request.contextPath}/my-products" style="margin:0;">
