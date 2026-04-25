@@ -175,7 +175,6 @@ public class OrderServlet extends HttpServlet {
                     return;
                 }
 
-                // 修正：使用数据库实际枚举值 ON_SALE
                 if (!"ON_SALE".equalsIgnoreCase(publishStatus)) {
                     request.getSession().setAttribute("errorMsg", "该商品当前不可交易");
                     response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
@@ -269,6 +268,9 @@ public class OrderServlet extends HttpServlet {
                 Connection conn = DBUtil.getConnection();
                 PreparedStatement ps = conn.prepareStatement(sql)
         ) {
+            // 关闭自动提交，为 COMPLETED + 商品联动做事务准备
+            conn.setAutoCommit(false);
+
             if ("DISPUTED".equals(targetStatus)) {
                 ps.setInt(1, orderId);
                 ps.setInt(2, loginUser.getUserId());
@@ -279,9 +281,34 @@ public class OrderServlet extends HttpServlet {
             }
 
             int rows = ps.executeUpdate();
+
             if (rows > 0) {
-                request.getSession().setAttribute("successMsg", "订单状态已更新");
+                // ★ 订单完成后联动将商品改为 SOLD
+                if ("COMPLETED".equals(targetStatus)) {
+                    String getProductIdSql = "SELECT product_id FROM orders WHERE order_id = ?";
+                    try (PreparedStatement getPs = conn.prepareStatement(getProductIdSql)) {
+                        getPs.setInt(1, orderId);
+                        try (ResultSet rs = getPs.executeQuery()) {
+                            if (rs.next()) {
+                                int productId = rs.getInt("product_id");
+                                String updateProductSql =
+                                        "UPDATE products SET publish_status = 'SOLD' " +
+                                        "WHERE product_id = ? AND publish_status = 'ON_SALE'";
+                                try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
+                                    updPs.setInt(1, productId);
+                                    updPs.executeUpdate();
+                                    // 即使商品已不是 ON_SALE（如已手动改过）也不影响订单完成
+                                }
+                            }
+                        }
+                    }
+                }
+
+                conn.commit();
+                request.getSession().setAttribute("successMsg",
+                        "COMPLETED".equals(targetStatus) ? "订单已完成，商品已标记为已售" : "订单状态已更新");
             } else {
+                conn.rollback();
                 request.getSession().setAttribute("errorMsg", "操作失败，可能订单状态已变更或无权操作");
             }
 
