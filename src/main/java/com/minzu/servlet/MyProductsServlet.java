@@ -8,7 +8,6 @@ import javax.servlet.ServletException;
 import javax.servlet.annotation.WebServlet;
 import javax.servlet.http.*;
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,15 +30,15 @@ public class MyProductsServlet extends HttpServlet {
 
         StringBuilder sql = new StringBuilder(
                 "SELECT p.product_id, p.seller_id, p.title, p.price, p.original_price, " +
-                "p.condition_level, p.cover_image_url, p.product_status, p.view_count, " +
-                "p.created_at, c.name AS category_name " +
+                "p.condition_level, p.cover_image_url, p.publish_status, p.view_count, " +
+                "p.favorite_count, p.created_at, c.category_name " +
                 "FROM products p " +
                 "LEFT JOIN categories c ON p.category_id = c.category_id " +
                 "WHERE p.seller_id = ? AND IFNULL(p.is_deleted, 0) = 0"
         );
 
         if (statusFilter != null && !statusFilter.trim().isEmpty()) {
-            sql.append(" AND p.product_status = ?");
+            sql.append(" AND p.publish_status = ?");
         }
         sql.append(" ORDER BY p.created_at DESC");
 
@@ -64,8 +63,9 @@ public class MyProductsServlet extends HttpServlet {
                     p.setOriginalPrice(rs.getBigDecimal("original_price"));
                     p.setConditionLevel(rs.getString("condition_level"));
                     p.setCoverImageUrl(rs.getString("cover_image_url"));
-                    p.setProductStatus(rs.getString("product_status"));
+                    p.setProductStatus(rs.getString("publish_status"));
                     p.setViewCount(rs.getInt("view_count"));
+                    p.setFavoriteCount(rs.getInt("favorite_count"));
                     p.setCreatedAt(rs.getTimestamp("created_at"));
                     p.setCategoryName(rs.getString("category_name"));
                     productList.add(p);
@@ -125,7 +125,8 @@ public class MyProductsServlet extends HttpServlet {
                               int loginUserId, int productId, String newStatus, String successMsg)
             throws IOException {
 
-        String sql = "UPDATE products SET product_status = ?, updated_at = NOW() " +
+        // 使用正确的字段名 publish_status
+        String sql = "UPDATE products SET publish_status = ?, updated_at = NOW() " +
                 "WHERE product_id = ? AND seller_id = ? AND IFNULL(is_deleted, 0) = 0";
 
         try (
