@@ -32,7 +32,6 @@ public class OrderServlet extends HttpServlet {
             type = "buy";
         }
 
-        // 分页参数
         int page = 1;
         try {
             String pageStr = request.getParameter("page");
@@ -41,16 +40,13 @@ public class OrderServlet extends HttpServlet {
 
         String whereClause = "sell".equals(type) ? "o.seller_id = ?" : "o.buyer_id = ?";
 
-        // Bug 3 修复：将总数查询与列表查询合并到同一个 Connection，
-        // 并对 updated_at 使用 IFNULL 防止字段缺失时 SQLException
-        // 导致 forward 失败、页面崩溃进不去。
         int totalCount = 0;
         int totalPages = 1;
         List<Map<String, Object>> orderList = new ArrayList<>();
 
         try (Connection conn = DBUtil.getConnection()) {
 
-            // 1. 查总数
+            // 查总数
             String countSql = "SELECT COUNT(*) FROM orders o WHERE " + whereClause;
             try (PreparedStatement ps = conn.prepareStatement(countSql)) {
                 ps.setInt(1, loginUser.getUserId());
@@ -64,14 +60,14 @@ public class OrderServlet extends HttpServlet {
             if (page > totalPages) page = totalPages;
             int offset = (page - 1) * PAGE_SIZE;
 
-            // 2. 查列表，updated_at 加 IFNULL 保护防字段不存在时炸
+            // fix: real_name -> nickname，与 users 表实际字段一致
             String sql =
                     "SELECT o.order_id, o.order_no, o.product_id, o.deal_price, o.quantity, " +
                     "o.order_status, o.buyer_note, o.seller_note, o.pickup_code, " +
                     "o.created_at, o.paid_at, o.completed_at, o.cancelled_at, " +
                     "IFNULL(o.updated_at, o.created_at) AS updated_at, " +
                     "p.title, p.cover_image_url, " +
-                    "bu.real_name AS buyer_name, se.real_name AS seller_name " +
+                    "bu.nickname AS buyer_name, se.nickname AS seller_name " +
                     "FROM orders o " +
                     "LEFT JOIN products p ON o.product_id = p.product_id " +
                     "LEFT JOIN users bu ON o.buyer_id = bu.user_id " +
@@ -257,7 +253,6 @@ public class OrderServlet extends HttpServlet {
         }
     }
 
-    /** 生成 6 位数字取货码 */
     private String generatePickupCode() {
         return String.format("%06d", new Random().nextInt(1_000_000));
     }
