@@ -5,13 +5,13 @@ import javax.servlet.http.*;
 import java.io.*;
 
 /**
- * 提供外部目录 C:/uploads/minzu-secondhand/ 下图片的访问
+ * 提供外部目录 D:/uploads/minzu-secondhand/ 下图片的访问
  * 访问路径：/uploads/{filename}
  */
 @WebServlet("/uploads/*")
 public class ImageServlet extends HttpServlet {
 
-    private static final String UPLOAD_DIR = "C:/uploads/minzu-secondhand/";
+    private static final String UPLOAD_DIR = "D:/uploads/minzu-secondhand/";
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp)

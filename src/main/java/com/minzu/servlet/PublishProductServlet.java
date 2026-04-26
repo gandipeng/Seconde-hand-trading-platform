@@ -24,8 +24,7 @@ import java.util.UUID;
 )
 public class PublishProductServlet extends HttpServlet {
 
-    /** 图片统一存到项目外部，避免 mvn package 清空 target 后丢失 */
-    private static final String UPLOAD_DIR = "C:/uploads/minzu-secondhand";
+    private static final String UPLOAD_DIR = "D:/uploads/minzu-secondhand";
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -110,7 +109,6 @@ public class PublishProductServlet extends HttpServlet {
             return;
         }
 
-        // 使用外部固定目录
         File uploadDir = new File(UPLOAD_DIR);
         if (!uploadDir.exists()) {
             uploadDir.mkdirs();
