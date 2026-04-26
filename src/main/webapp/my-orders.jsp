@@ -7,9 +7,9 @@
     String type = (String) request.getAttribute("type");
     if (type == null) type = "buy";
 
-    int currentPage = request.getAttribute("currentPage") != null ? (int) request.getAttribute("currentPage") : 1;
-    int totalPages  = request.getAttribute("totalPages")  != null ? (int) request.getAttribute("totalPages")  : 1;
-    int totalCount  = request.getAttribute("totalCount")  != null ? (int) request.getAttribute("totalCount")  : 0;
+    int currentPage = request.getAttribute("currentPage") != null ? ((Number) request.getAttribute("currentPage")).intValue() : 1;
+    int totalPages  = request.getAttribute("totalPages")  != null ? ((Number) request.getAttribute("totalPages")).intValue()  : 1;
+    int totalCount  = request.getAttribute("totalCount")  != null ? ((Number) request.getAttribute("totalCount")).intValue()  : 0;
 
     String successMsg = (String) session.getAttribute("successMsg");
     if (successMsg != null) session.removeAttribute("successMsg");
@@ -19,7 +19,7 @@
 
     com.minzu.entity.User loginUser = (com.minzu.entity.User) session.getAttribute("loginUser");
 
-    // ---- 状态文字 & 颜色（避免 <%! %> 声明块编译问题）----
+    // Bug 修复：将 Map 定义提升至页面顶部同一 <% %> 块，避免 Jasper 编译时作用域不可见
     Map<String,String> statusTextMap = new LinkedHashMap<>();
     statusTextMap.put("CREATED",      "待交易");
     statusTextMap.put("PAID_OFFLINE", "线下已成交");
@@ -33,6 +33,9 @@
     statusColorMap.put("CANCELLED",    "#8c8c8c");
     statusColorMap.put("COMPLETED",    "#52c41a");
     statusColorMap.put("DISPUTED",     "#f5222d");
+
+    String buyActive  = "buy".equals(type)  ? " active" : "";
+    String sellActive = "sell".equals(type) ? " active" : "";
 %>
 <!DOCTYPE html>
 <html>
@@ -156,10 +159,6 @@
     <div class="page-title">我的订单</div>
 
     <div class="tabs">
-        <%
-            String buyActive  = "buy".equals(type)  ? " active" : "";
-            String sellActive = "sell".equals(type) ? " active" : "";
-        %>
         <a class='tab<%= buyActive %>'  href="${pageContext.request.contextPath}/orders?type=buy">&#128722; 我买到的</a>
         <a class='tab<%= sellActive %>' href="${pageContext.request.contextPath}/orders?type=sell">&#128230; 我卖出的</a>
     </div>
@@ -275,7 +274,7 @@
 
     <% if (totalPages > 1) { %>
     <div class="pagination">
-        <a class="page-btn <%= currentPage == 1 ? "disabled" : "" %>"
+        <a class='page-btn<%= currentPage == 1 ? " disabled" : "" %>'
            href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage - 1 %>">&laquo;</a>
 
         <%
@@ -295,7 +294,7 @@
             <a class="page-btn" href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= totalPages %>"><%= totalPages %></a>
         <% } %>
 
-        <a class="page-btn <%= currentPage == totalPages ? "disabled" : "" %>"
+        <a class='page-btn<%= currentPage == totalPages ? " disabled" : "" %>'
            href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage + 1 %>">&raquo;</a>
 
         <span class="page-info">共 <%= totalCount %> 条记录</span>
