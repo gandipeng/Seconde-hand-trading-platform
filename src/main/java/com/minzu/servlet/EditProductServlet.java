@@ -27,7 +27,9 @@ import java.util.UUID;
 )
 public class EditProductServlet extends HttpServlet {
 
-    // GET：显示编辑页，回填商品现有数据
+    /** 图片统一存到项目外部，避免 mvn package 清空 target 后丢失 */
+    private static final String UPLOAD_DIR = "C:/uploads/minzu-secondhand";
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -55,7 +57,6 @@ public class EditProductServlet extends HttpServlet {
 
         try (Connection conn = DBUtil.getConnection()) {
 
-            // fix: product_status → publish_status（与数据库字段一致）
             String sql = "SELECT p.product_id, p.seller_id, p.category_id, p.title, p.product_desc, " +
                     "p.price, p.original_price, p.condition_level, p.cover_image_url, p.publish_status " +
                     "FROM products p " +
@@ -82,14 +83,12 @@ public class EditProductServlet extends HttpServlet {
                     product.setOriginalPrice(rs.getBigDecimal("original_price"));
                     product.setConditionLevel(rs.getString("condition_level"));
                     product.setCoverImageUrl(rs.getString("cover_image_url"));
-                    // fix: 读取字段名同步修正为 publish_status
                     product.setProductStatus(rs.getString("publish_status"));
 
                     request.setAttribute("product", product);
                 }
             }
 
-            // 查询分类列表
             String catSql = "SELECT category_id, category_name FROM categories ORDER BY category_id";
             try (PreparedStatement ps2 = conn.prepareStatement(catSql);
                  ResultSet rs2 = ps2.executeQuery()) {
@@ -113,7 +112,6 @@ public class EditProductServlet extends HttpServlet {
         request.getRequestDispatcher("/edit-product.jsp").forward(request, response);
     }
 
-    // POST：处理更新
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -162,16 +160,15 @@ public class EditProductServlet extends HttpServlet {
             return;
         }
 
-        // 处理封面图（可选，不上传则保留原图）
-        String uploadPath = getServletContext().getRealPath("/") + "uploads";
-        File uploadDir = new File(uploadPath);
+        // 使用外部固定目录
+        File uploadDir = new File(UPLOAD_DIR);
         if (!uploadDir.exists()) uploadDir.mkdirs();
 
         String newCoverImageUrl = null;
         try {
             Part coverPart = request.getPart("coverImage");
             if (coverPart != null && coverPart.getSize() > 0) {
-                newCoverImageUrl = saveFile(coverPart, uploadPath, request);
+                newCoverImageUrl = saveFile(coverPart, UPLOAD_DIR, request);
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -181,7 +178,6 @@ public class EditProductServlet extends HttpServlet {
         try {
             conn = DBUtil.getConnection();
 
-            // 加载当前商品（验证归属权）
             String checkSql = "SELECT cover_image_url FROM products " +
                     "WHERE product_id = ? AND seller_id = ? AND IFNULL(is_deleted,0)=0";
             String currentCover = null;
@@ -198,7 +194,6 @@ public class EditProductServlet extends HttpServlet {
                 }
             }
 
-            // 如果没有上传新封面，保留原图
             String finalCover = (newCoverImageUrl != null) ? newCoverImageUrl : currentCover;
 
             String updateSql = "UPDATE products SET " +

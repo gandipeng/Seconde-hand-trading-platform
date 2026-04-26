@@ -24,7 +24,9 @@ import java.util.UUID;
 )
 public class PublishProductServlet extends HttpServlet {
 
-    // 显示发布页
+    /** 图片统一存到项目外部，避免 mvn package 清空 target 后丢失 */
+    private static final String UPLOAD_DIR = "C:/uploads/minzu-secondhand";
+
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -55,7 +57,6 @@ public class PublishProductServlet extends HttpServlet {
         request.getRequestDispatcher("/publish-product.jsp").forward(request, response);
     }
 
-    // 处理发布商品
     @Override
     protected void doPost(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
@@ -68,7 +69,6 @@ public class PublishProductServlet extends HttpServlet {
             return;
         }
 
-        // 取普通表单字段
         String title = request.getParameter("title");
         String description = request.getParameter("description");
         String priceStr = request.getParameter("price");
@@ -76,7 +76,6 @@ public class PublishProductServlet extends HttpServlet {
         String conditionLevel = request.getParameter("conditionLevel");
         String categoryIdStr = request.getParameter("categoryId");
 
-        // 取上传文件
         Part coverPart = request.getPart("coverImage");
         List<Part> detailImageParts = new ArrayList<>();
         for (Part part : request.getParts()) {
@@ -85,7 +84,6 @@ public class PublishProductServlet extends HttpServlet {
             }
         }
 
-        // 基本校验
         if (title == null || title.trim().isEmpty()
                 || priceStr == null || priceStr.trim().isEmpty()
                 || conditionLevel == null || conditionLevel.trim().isEmpty()
@@ -112,9 +110,8 @@ public class PublishProductServlet extends HttpServlet {
             return;
         }
 
-        // 上传目录：放到项目部署目录下的 uploads
-        String uploadPath = getServletContext().getRealPath("/") + "uploads";
-        File uploadDir = new File(uploadPath);
+        // 使用外部固定目录
+        File uploadDir = new File(UPLOAD_DIR);
         if (!uploadDir.exists()) {
             uploadDir.mkdirs();
         }
@@ -125,13 +122,11 @@ public class PublishProductServlet extends HttpServlet {
         ResultSet generatedKeys = null;
 
         try {
-            // 先保存封面图
-            String coverImageUrl = saveFile(coverPart, uploadPath, request);
+            String coverImageUrl = saveFile(coverPart, UPLOAD_DIR, request);
 
             conn = DBUtil.getConnection();
-            conn.setAutoCommit(false); // 开事务，保证商品和图片一起成功
+            conn.setAutoCommit(false);
 
-            // 插入商品主表
             String insertProductSql =
                     "INSERT INTO products " +
                             "(seller_id, category_id, title, product_desc, price, original_price, " +
@@ -157,7 +152,6 @@ public class PublishProductServlet extends HttpServlet {
 
             psProduct.executeUpdate();
 
-            // 取新商品ID
             generatedKeys = psProduct.getGeneratedKeys();
             long productId = 0;
             if (generatedKeys.next()) {
@@ -166,7 +160,6 @@ public class PublishProductServlet extends HttpServlet {
                 throw new RuntimeException("发布失败：未获取到商品ID");
             }
 
-            // 保存详情图
             String insertImageSql =
                     "INSERT INTO product_images (product_id, image_url, sort_order, created_at) " +
                             "VALUES (?, ?, ?, NOW())";
@@ -175,8 +168,7 @@ public class PublishProductServlet extends HttpServlet {
 
             int sortOrder = 1;
             for (Part part : detailImageParts) {
-                String imageUrl = saveFile(part, uploadPath, request);
-
+                String imageUrl = saveFile(part, UPLOAD_DIR, request);
                 psImage.setLong(1, productId);
                 psImage.setString(2, imageUrl);
                 psImage.setInt(3, sortOrder++);
@@ -184,7 +176,6 @@ public class PublishProductServlet extends HttpServlet {
             }
 
             psImage.executeBatch();
-
             conn.commit();
             response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
 
@@ -210,26 +201,14 @@ public class PublishProductServlet extends HttpServlet {
         }
     }
 
-    // 保存单个文件，返回数据库里要存的相对路径
     private String saveFile(Part part, String uploadPath, HttpServletRequest request) throws Exception {
         String submittedFileName = Paths.get(part.getSubmittedFileName()).getFileName().toString();
-
-        if (submittedFileName == null || submittedFileName.trim().isEmpty()) {
-            return null;
-        }
-
+        if (submittedFileName == null || submittedFileName.trim().isEmpty()) return null;
         String ext = "";
         int dotIndex = submittedFileName.lastIndexOf(".");
-        if (dotIndex != -1) {
-            ext = submittedFileName.substring(dotIndex);
-        }
-
+        if (dotIndex != -1) ext = submittedFileName.substring(dotIndex);
         String newFileName = UUID.randomUUID().toString().replace("-", "") + ext;
-        String fullPath = uploadPath + File.separator + newFileName;
-
-        part.write(fullPath);
-
-        // 返回给数据库保存的相对访问路径
+        part.write(uploadPath + File.separator + newFileName);
         return request.getContextPath() + "/uploads/" + newFileName;
     }
 }
