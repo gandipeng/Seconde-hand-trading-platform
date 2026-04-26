@@ -57,7 +57,6 @@
         .card-cover img { width: 100%; height: 180px; object-fit: cover; background: #f0f0f0; display: block; }
         .no-cover { width: 100%; height: 180px; background: #f0f2f5; display: flex; align-items: center; justify-content: center; font-size: 36px; color: #ccc; }
 
-        /* 已售出蒙层 */
         .sold-mask {
             position: absolute; inset: 0;
             background: rgba(0,0,0,0.45);
@@ -96,7 +95,7 @@
 <body>
 
 <div class="header">
-    <div class="logo">🏫 民大二手交易平台</div>
+    <div class="logo">&#127979; 民大二手交易平台</div>
     <div class="nav">
         <a href="${pageContext.request.contextPath}/index.jsp">首页</a>
         <a href="${pageContext.request.contextPath}/product-list">浏览商品</a>
@@ -109,7 +108,7 @@
 
 <div class="container">
     <div class="page-header">
-        <h2>❤️ 我的收藏</h2>
+        <h2>&#10084;&#65039; 我的收藏</h2>
         <span style="font-size:14px;color:#999;">共 <%= favoriteList != null ? favoriteList.size() : 0 %> 件商品</span>
     </div>
 
@@ -121,14 +120,14 @@
 
     <% if (favoriteList == null || favoriteList.isEmpty()) { %>
         <div class="empty-box">
-            <div class="icon">❤️</div>
+            <div class="icon">&#10084;&#65039;</div>
             <p>还没有收藏任何商品</p>
-            <a href="${pageContext.request.contextPath}/product-list" class="btn-primary">去逐郊商品</a>
+            <a href="${pageContext.request.contextPath}/product-list" class="btn-primary">去浏览商品</a>
         </div>
     <% } else { %>
         <div class="product-grid">
         <% for (Product p : favoriteList) {
-            boolean isSold = "SOLD".equals(p.getProductStatus());
+            boolean isSold    = "SOLD".equals(p.getProductStatus());
             boolean isOffline = "OFFLINE".equals(p.getProductStatus());
         %>
             <div class="product-card" id="card-<%= p.getProductId() %>">
@@ -136,7 +135,7 @@
                     <% if (p.getCoverImageUrl() != null && !p.getCoverImageUrl().isEmpty()) { %>
                         <img src="<%= p.getCoverImageUrl() %>" alt="<%= p.getTitle() %>" loading="lazy">
                     <% } else { %>
-                        <div class="no-cover">📦</div>
+                        <div class="no-cover">&#128230;</div>
                     <% } %>
                     <% if (isSold) { %><div class="sold-mask">已售出</div><% } %>
                     <% if (isOffline) { %><div class="sold-mask" style="background:rgba(0,0,0,0.3);">已下架</div><% } %>
@@ -145,14 +144,14 @@
                 <div class="card-body">
                     <p class="card-title" title="<%= p.getTitle() %>"><%= p.getTitle() %></p>
                     <div class="card-price">
-                        ¥<%= p.getPrice() %>
+                        &yen;<%= p.getPrice() %>
                         <% if (p.getOriginalPrice() != null) { %>
-                            <span>¥<%= p.getOriginalPrice() %></span>
+                            <span>&yen;<%= p.getOriginalPrice() %></span>
                         <% } %>
                     </div>
                     <div class="card-meta">
                         <%= p.getCategoryName() != null ? p.getCategoryName() : "未分类" %>
-                        &nbsp;·&nbsp; <%= p.getSellerName() != null ? p.getSellerName() : "未知" %>
+                        &nbsp;&middot;&nbsp; <%= p.getSellerName() != null ? p.getSellerName() : "未知" %>
                     </div>
                 </div>
 
@@ -170,17 +169,18 @@
 </div>
 
 <script>
+/* Bug A 修复：改用 URLSearchParams + 显式 Content-Type
+   原生 FormData 导致 Content-Type=multipart/form-data，
+   Servlet 的 request.getParameter() 读不到 productId */
 function unfavorite(productId, btn) {
     if (!confirm('确定取消收藏吗？')) return;
     btn.disabled = true;
     btn.textContent = '处理中…';
 
-    var form = new FormData();
-    form.append('productId', productId);
-
     fetch('${pageContext.request.contextPath}/favorite', {
         method: 'POST',
-        body: form
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'productId=' + encodeURIComponent(productId)
     })
     .then(function(r){ return r.json(); })
     .then(function(data){
