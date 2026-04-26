@@ -2,12 +2,14 @@
 <%@ page import="java.util.*" %>
 <%
     List<Map<String, Object>> orderList = (List<Map<String, Object>>) request.getAttribute("orderList");
+    if (orderList == null) orderList = new ArrayList<>();
+
     String type = (String) request.getAttribute("type");
     if (type == null) type = "buy";
 
-    int currentPage  = request.getAttribute("currentPage")  != null ? (int) request.getAttribute("currentPage")  : 1;
-    int totalPages   = request.getAttribute("totalPages")   != null ? (int) request.getAttribute("totalPages")   : 1;
-    int totalCount   = request.getAttribute("totalCount")   != null ? (int) request.getAttribute("totalCount")   : 0;
+    int currentPage = request.getAttribute("currentPage") != null ? (int) request.getAttribute("currentPage") : 1;
+    int totalPages  = request.getAttribute("totalPages")  != null ? (int) request.getAttribute("totalPages")  : 1;
+    int totalCount  = request.getAttribute("totalCount")  != null ? (int) request.getAttribute("totalCount")  : 0;
 
     String successMsg = (String) session.getAttribute("successMsg");
     if (successMsg != null) session.removeAttribute("successMsg");
@@ -16,24 +18,21 @@
     if (errorMsg != null) session.removeAttribute("errorMsg");
 
     com.minzu.entity.User loginUser = (com.minzu.entity.User) session.getAttribute("loginUser");
-%>
-<%!
-    public String statusText(String s) {
-        if ("CREATED".equals(s))      return "待交易";
-        if ("PAID_OFFLINE".equals(s)) return "线下已成交";
-        if ("CANCELLED".equals(s))    return "已取消";
-        if ("COMPLETED".equals(s))    return "已完成";
-        if ("DISPUTED".equals(s))     return "纠纷中";
-        return s != null ? s : "未知";
-    }
-    public String statusColor(String s) {
-        if ("CREATED".equals(s))      return "#1677ff";
-        if ("PAID_OFFLINE".equals(s)) return "#fa8c16";
-        if ("CANCELLED".equals(s))    return "#8c8c8c";
-        if ("COMPLETED".equals(s))    return "#52c41a";
-        if ("DISPUTED".equals(s))     return "#f5222d";
-        return "#999";
-    }
+
+    // ---- 状态文字 & 颜色（避免 <%! %> 声明块编译问题）----
+    Map<String,String> statusTextMap = new LinkedHashMap<>();
+    statusTextMap.put("CREATED",      "待交易");
+    statusTextMap.put("PAID_OFFLINE", "线下已成交");
+    statusTextMap.put("CANCELLED",    "已取消");
+    statusTextMap.put("COMPLETED",    "已完成");
+    statusTextMap.put("DISPUTED",     "纠纷中");
+
+    Map<String,String> statusColorMap = new LinkedHashMap<>();
+    statusColorMap.put("CREATED",      "#1677ff");
+    statusColorMap.put("PAID_OFFLINE", "#fa8c16");
+    statusColorMap.put("CANCELLED",    "#8c8c8c");
+    statusColorMap.put("COMPLETED",    "#52c41a");
+    statusColorMap.put("DISPUTED",     "#f5222d");
 %>
 <!DOCTYPE html>
 <html>
@@ -113,7 +112,6 @@
             text-align: center; color: #999; box-shadow: 0 4px 18px rgba(0,0,0,0.05);
         }
         .empty-icon { font-size: 48px; margin-bottom: 12px; }
-        /* 分页 */
         .pagination {
             display: flex; justify-content: center; align-items: center;
             gap: 8px; margin-top: 28px; flex-wrap: wrap;
@@ -138,7 +136,7 @@
 <body>
 
 <div class="header">
-    <div class="logo">🏫 民大二手交易平台</div>
+    <div class="logo">&#127979; 民大二手交易平台</div>
     <div class="nav">
         <a href="${pageContext.request.contextPath}/index.jsp">首页</a>
         <a href="${pageContext.request.contextPath}/product-list">商品列表</a>
@@ -158,25 +156,31 @@
     <div class="page-title">我的订单</div>
 
     <div class="tabs">
-        <a class="tab <%= \"buy\".equals(type) ? \"active\" : \"\" %>" href="${pageContext.request.contextPath}/orders?type=buy">🛒 我买到的</a>
-        <a class="tab <%= \"sell\".equals(type) ? \"active\" : \"\" %>" href="${pageContext.request.contextPath}/orders?type=sell">📦 我卖出的</a>
+        <%
+            String buyActive  = "buy".equals(type)  ? " active" : "";
+            String sellActive = "sell".equals(type) ? " active" : "";
+        %>
+        <a class='tab<%= buyActive %>'  href="${pageContext.request.contextPath}/orders?type=buy">&#128722; 我买到的</a>
+        <a class='tab<%= sellActive %>' href="${pageContext.request.contextPath}/orders?type=sell">&#128230; 我卖出的</a>
     </div>
 
     <% if (successMsg != null) { %>
-        <div class="msg msg-success">✅ <%= successMsg %></div>
+        <div class="msg msg-success">&#9989; <%= successMsg %></div>
     <% } %>
     <% if (errorMsg != null) { %>
-        <div class="msg msg-error">❌ <%= errorMsg %></div>
+        <div class="msg msg-error">&#10060; <%= errorMsg %></div>
     <% } %>
 
-    <% if (orderList == null || orderList.isEmpty()) { %>
+    <% if (orderList.isEmpty()) { %>
         <div class="empty">
-            <div class="empty-icon">📭</div>
+            <div class="empty-icon">&#128205;</div>
             <div>暂无订单记录</div>
         </div>
     <% } else {
         for (Map<String, Object> o : orderList) {
             String status = (String) o.get("orderStatus");
+            String sText  = statusTextMap.containsKey(status) ? statusTextMap.get(status) : (status != null ? status : "未知");
+            String sColor = statusColorMap.containsKey(status) ? statusColorMap.get(status) : "#999";
     %>
         <div class="card">
             <div class="card-row">
@@ -188,9 +192,7 @@
                 <% } %>
 
                 <div class="main">
-                    <div class="badge" style="background:<%= statusColor(status) %>">
-                        <%= statusText(status) %>
-                    </div>
+                    <div class="badge" style="background:<%= sColor %>"><%= sText %></div>
                     <div class="card-title"><%= o.get("title") != null ? o.get("title") : "商品已删除" %></div>
                     <div class="meta">
                         订单号：<%= o.get("orderNo") %>&nbsp;&nbsp;
@@ -205,10 +207,12 @@
                         <br>
                         <% if (o.get("buyerNote") != null) { %>买家备注：<%= o.get("buyerNote") %><br><% } %>
                         <% if (o.get("sellerNote") != null) { %>卖家备注：<%= o.get("sellerNote") %><br><% } %>
-                        <%-- 取货码显示：线下成交或已完成时显示 --%>
-                        <% String pc = (String) o.get("pickupCode");
-                           if (pc != null && !pc.isEmpty() &&
-                               ("PAID_OFFLINE".equals(status) || "COMPLETED".equals(status))) { %>
+                        <%
+                            String pc = (String) o.get("pickupCode");
+                            boolean showPc = pc != null && !pc.isEmpty()
+                                && ("PAID_OFFLINE".equals(status) || "COMPLETED".equals(status));
+                        %>
+                        <% if (showPc) { %>
                             <span class="pickup-label">取货码</span>
                             <span class="pickup-code"><%= pc %></span><br>
                         <% } %>
@@ -269,28 +273,29 @@
         </div>
     <% }} %>
 
-    <%-- 分页导航 --%>
     <% if (totalPages > 1) { %>
     <div class="pagination">
-        <a class="page-btn <%= currentPage == 1 ? \"disabled\" : \"\" %>"
+        <a class="page-btn <%= currentPage == 1 ? "disabled" : "" %>"
            href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage - 1 %>">&laquo;</a>
 
-        <% int startP = Math.max(1, currentPage - 2);
-           int endP   = Math.min(totalPages, currentPage + 2);
-           if (startP > 1) { %>
+        <%
+            int startP = Math.max(1, currentPage - 2);
+            int endP   = Math.min(totalPages, currentPage + 2);
+        %>
+        <% if (startP > 1) { %>
             <a class="page-btn" href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=1">1</a>
-            <% if (startP > 2) { %><span style="color:#bbb">…</span><% } %>
-        <% }
-           for (int p = startP; p <= endP; p++) { %>
-            <a class="page-btn <%= p == currentPage ? \"active\" : \"\" %>"
+            <% if (startP > 2) { %><span style="color:#bbb">&#8230;</span><% } %>
+        <% } %>
+        <% for (int p = startP; p <= endP; p++) { %>
+            <a class='page-btn<%= p == currentPage ? " active" : "" %>'
                href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= p %>"><%= p %></a>
-        <% }
-           if (endP < totalPages) { %>
-            <% if (endP < totalPages - 1) { %><span style="color:#bbb">…</span><% } %>
+        <% } %>
+        <% if (endP < totalPages) { %>
+            <% if (endP < totalPages - 1) { %><span style="color:#bbb">&#8230;</span><% } %>
             <a class="page-btn" href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= totalPages %>"><%= totalPages %></a>
         <% } %>
 
-        <a class="page-btn <%= currentPage == totalPages ? \"disabled\" : \"\" %>"
+        <a class="page-btn <%= currentPage == totalPages ? "disabled" : "" %>"
            href="${pageContext.request.contextPath}/orders?type=<%= type %>&page=<%= currentPage + 1 %>">&raquo;</a>
 
         <span class="page-info">共 <%= totalCount %> 条记录</span>
