@@ -13,8 +13,8 @@ import java.util.*;
 
 /**
  * /messages          GET  -> 会话列表
- * /messages          POST -> 发送消息（AJAX 或 form submit）
- * /messages/chat     GET  -> 与某用户的聊天记录
+ * /messages          POST -> 发送消息（form submit）
+ * /messages?with=xx  GET  -> 与某用户的聊天记录
  */
 @WebServlet("/messages")
 public class MessageServlet extends HttpServlet {
@@ -35,10 +35,8 @@ public class MessageServlet extends HttpServlet {
         String productIdStr = request.getParameter("productId");
 
         if (withStr != null && !withStr.trim().isEmpty()) {
-            // ---- 聊天详情页 ----
             showChat(request, response, loginUser, withStr, productIdStr);
         } else {
-            // ---- 会话列表页 ----
             showConversationList(request, response, loginUser);
         }
     }
@@ -61,8 +59,17 @@ public class MessageServlet extends HttpServlet {
         String content       = request.getParameter("content");
         String productIdStr  = request.getParameter("productId");
 
+        // Bug 2 修复：验证失败时 redirect 回聊天页而非直接跳消息列表，
+        // 避免用户看起来像是「发送没有反应」
         if (receiverIdStr == null || content == null || content.trim().isEmpty()) {
-            response.sendRedirect(request.getContextPath() + "/messages");
+            String back = request.getContextPath() + "/messages";
+            if (receiverIdStr != null && !receiverIdStr.trim().isEmpty()) {
+                back += "?with=" + receiverIdStr.trim();
+                if (productIdStr != null && !productIdStr.trim().isEmpty()) {
+                    back += "&productId=" + productIdStr.trim();
+                }
+            }
+            response.sendRedirect(back);
             return;
         }
 
@@ -169,12 +176,10 @@ public class MessageServlet extends HttpServlet {
         try {
             otherId = Integer.parseInt(withStr.trim());
         } catch (NumberFormatException e) {
-            // with 参数格式错误，回列表页
             response.sendRedirect(request.getContextPath() + "/messages");
             return;
         }
 
-        // 不能跟自己聊
         if (otherId == me) {
             response.sendRedirect(request.getContextPath() + "/messages");
             return;
@@ -185,7 +190,6 @@ public class MessageServlet extends HttpServlet {
             try { productId = Integer.parseInt(productIdStr.trim()); } catch (Exception ignored) {}
         }
 
-        // 提前设置兼容默认值，防止异常时 JSP 拿到 null 后 NPE
         request.setAttribute("otherId",       otherId);
         request.setAttribute("otherNickname", "用户" + otherId);
         request.setAttribute("product",       null);
@@ -194,7 +198,6 @@ public class MessageServlet extends HttpServlet {
 
         try (Connection conn = DBUtil.getConnection()) {
 
-            // 查对方昵称
             String userSql = "SELECT nickname FROM users WHERE user_id = ?";
             try (PreparedStatement ps = conn.prepareStatement(userSql)) {
                 ps.setInt(1, otherId);
@@ -202,14 +205,12 @@ public class MessageServlet extends HttpServlet {
                     if (rs.next()) {
                         request.setAttribute("otherNickname", rs.getString("nickname"));
                     } else {
-                        // 对方用户不存在，直接回列表
                         response.sendRedirect(request.getContextPath() + "/messages");
                         return;
                     }
                 }
             }
 
-            // 查商品信息（如有）
             if (productId != null) {
                 String pSql = "SELECT product_id, title, cover_image_url, price FROM products WHERE product_id = ?";
                 try (PreparedStatement ps = conn.prepareStatement(pSql)) {
@@ -227,7 +228,6 @@ public class MessageServlet extends HttpServlet {
                 }
             }
 
-            // 拉取消息记录
             String msgSql =
                 "SELECT m.message_id, m.sender_id, m.receiver_id, m.content, " +
                 "       m.is_read, m.created_at, " +
@@ -259,7 +259,6 @@ public class MessageServlet extends HttpServlet {
             }
             request.setAttribute("chatList", chatList);
 
-            // 将未读消息标记为已读
             String markSql = "UPDATE messages SET is_read=1 " +
                              "WHERE receiver_id=? AND sender_id=? AND is_read=0";
             try (PreparedStatement ps = conn.prepareStatement(markSql)) {
@@ -270,7 +269,6 @@ public class MessageServlet extends HttpServlet {
 
         } catch (Exception e) {
             e.printStackTrace();
-            // 属性已在 try 之前设好默认值，这里只需设置错误提示
             request.setAttribute("errorMsg", "加载聊天记录失败，请稍后重试：" + e.getMessage());
         }
 

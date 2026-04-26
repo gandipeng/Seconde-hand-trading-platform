@@ -39,96 +39,89 @@ public class OrderServlet extends HttpServlet {
             if (pageStr != null) page = Math.max(1, Integer.parseInt(pageStr.trim()));
         } catch (NumberFormatException ignored) {}
 
-        int offset = (page - 1) * PAGE_SIZE;
-
         String whereClause = "sell".equals(type) ? "o.seller_id = ?" : "o.buyer_id = ?";
 
-        // 总数查询
-        String countSql = "SELECT COUNT(*) FROM orders o WHERE " + whereClause;
+        // Bug 3 修复：将总数查询与列表查询合并到同一个 Connection，
+        // 并对 updated_at 使用 IFNULL 防止字段缺失时 SQLException
+        // 导致 forward 失败、页面崩溃进不去。
         int totalCount = 0;
-        try (
-            Connection conn = DBUtil.getConnection();
-            PreparedStatement ps = conn.prepareStatement(countSql)
-        ) {
-            ps.setInt(1, loginUser.getUserId());
-            try (ResultSet rs = ps.executeQuery()) {
-                if (rs.next()) totalCount = rs.getInt(1);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        int totalPages = (int) Math.ceil((double) totalCount / PAGE_SIZE);
-        if (totalPages < 1) totalPages = 1;
-        if (page > totalPages) page = totalPages;
-        offset = (page - 1) * PAGE_SIZE;
-
-        String sql =
-                "SELECT o.order_id, o.order_no, o.product_id, o.deal_price, o.quantity, " +
-                "o.order_status, o.buyer_note, o.seller_note, o.pickup_code, " +
-                "o.created_at, o.paid_at, o.completed_at, o.cancelled_at, o.updated_at, " +
-                "p.title, p.cover_image_url, " +
-                "bu.real_name AS buyer_name, se.real_name AS seller_name " +
-                "FROM orders o " +
-                "LEFT JOIN products p ON o.product_id = p.product_id " +
-                "LEFT JOIN users bu ON o.buyer_id = bu.user_id " +
-                "LEFT JOIN users se ON o.seller_id = se.user_id " +
-                "WHERE " + whereClause +
-                " ORDER BY o.created_at DESC" +
-                " LIMIT ? OFFSET ?";
-
+        int totalPages = 1;
         List<Map<String, Object>> orderList = new ArrayList<>();
 
-        try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)
-        ) {
-            ps.setInt(1, loginUser.getUserId());
-            ps.setInt(2, PAGE_SIZE);
-            ps.setInt(3, offset);
+        try (Connection conn = DBUtil.getConnection()) {
 
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("orderId", rs.getInt("order_id"));
-                    row.put("orderNo", rs.getString("order_no"));
-                    row.put("productId", rs.getInt("product_id"));
-                    row.put("title", rs.getString("title"));
-                    row.put("coverImageUrl", rs.getString("cover_image_url"));
-                    row.put("dealPrice", rs.getBigDecimal("deal_price"));
-                    row.put("quantity", rs.getInt("quantity"));
-                    row.put("orderStatus", rs.getString("order_status"));
-                    row.put("buyerNote", rs.getString("buyer_note"));
-                    row.put("sellerNote", rs.getString("seller_note"));
-                    row.put("pickupCode", rs.getString("pickup_code"));
-                    row.put("createdAt", rs.getTimestamp("created_at"));
-                    row.put("paidAt", rs.getTimestamp("paid_at"));
-                    row.put("completedAt", rs.getTimestamp("completed_at"));
-                    row.put("cancelledAt", rs.getTimestamp("cancelled_at"));
-                    row.put("updatedAt", rs.getTimestamp("updated_at"));
-                    row.put("buyerName", rs.getString("buyer_name"));
-                    row.put("sellerName", rs.getString("seller_name"));
-                    orderList.add(row);
+            // 1. 查总数
+            String countSql = "SELECT COUNT(*) FROM orders o WHERE " + whereClause;
+            try (PreparedStatement ps = conn.prepareStatement(countSql)) {
+                ps.setInt(1, loginUser.getUserId());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) totalCount = rs.getInt(1);
                 }
             }
 
-            request.setAttribute("type", type);
-            request.setAttribute("orderList", orderList);
-            request.setAttribute("currentPage", page);
-            request.setAttribute("totalPages", totalPages);
-            request.setAttribute("totalCount", totalCount);
-            request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
+            totalPages = (int) Math.ceil((double) totalCount / PAGE_SIZE);
+            if (totalPages < 1) totalPages = 1;
+            if (page > totalPages) page = totalPages;
+            int offset = (page - 1) * PAGE_SIZE;
+
+            // 2. 查列表，updated_at 加 IFNULL 保护防字段不存在时炸
+            String sql =
+                    "SELECT o.order_id, o.order_no, o.product_id, o.deal_price, o.quantity, " +
+                    "o.order_status, o.buyer_note, o.seller_note, o.pickup_code, " +
+                    "o.created_at, o.paid_at, o.completed_at, o.cancelled_at, " +
+                    "IFNULL(o.updated_at, o.created_at) AS updated_at, " +
+                    "p.title, p.cover_image_url, " +
+                    "bu.real_name AS buyer_name, se.real_name AS seller_name " +
+                    "FROM orders o " +
+                    "LEFT JOIN products p ON o.product_id = p.product_id " +
+                    "LEFT JOIN users bu ON o.buyer_id = bu.user_id " +
+                    "LEFT JOIN users se ON o.seller_id = se.user_id " +
+                    "WHERE " + whereClause +
+                    " ORDER BY o.created_at DESC" +
+                    " LIMIT ? OFFSET ?";
+
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setInt(1, loginUser.getUserId());
+                ps.setInt(2, PAGE_SIZE);
+                ps.setInt(3, offset);
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        row.put("orderId",       rs.getInt("order_id"));
+                        row.put("orderNo",       rs.getString("order_no"));
+                        row.put("productId",     rs.getInt("product_id"));
+                        row.put("title",         rs.getString("title"));
+                        row.put("coverImageUrl", rs.getString("cover_image_url"));
+                        row.put("dealPrice",     rs.getBigDecimal("deal_price"));
+                        row.put("quantity",      rs.getInt("quantity"));
+                        row.put("orderStatus",   rs.getString("order_status"));
+                        row.put("buyerNote",     rs.getString("buyer_note"));
+                        row.put("sellerNote",    rs.getString("seller_note"));
+                        row.put("pickupCode",    rs.getString("pickup_code"));
+                        row.put("createdAt",     rs.getTimestamp("created_at"));
+                        row.put("paidAt",        rs.getTimestamp("paid_at"));
+                        row.put("completedAt",   rs.getTimestamp("completed_at"));
+                        row.put("cancelledAt",   rs.getTimestamp("cancelled_at"));
+                        row.put("updatedAt",     rs.getTimestamp("updated_at"));
+                        row.put("buyerName",     rs.getString("buyer_name"));
+                        row.put("sellerName",    rs.getString("seller_name"));
+                        orderList.add(row);
+                    }
+                }
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
             request.setAttribute("errorMsg", "加载订单失败：" + e.getMessage());
-            request.setAttribute("type", type);
-            request.setAttribute("orderList", orderList);
-            request.setAttribute("currentPage", 1);
-            request.setAttribute("totalPages", 1);
-            request.setAttribute("totalCount", 0);
-            request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
         }
+
+        request.setAttribute("type",        type);
+        request.setAttribute("orderList",   orderList);
+        request.setAttribute("currentPage", page);
+        request.setAttribute("totalPages",  totalPages);
+        request.setAttribute("totalCount",  totalCount);
+        request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
     }
 
     @Override
@@ -228,7 +221,7 @@ public class OrderServlet extends HttpServlet {
                     checkPs.setInt(2, loginUser.getUserId());
                     try (ResultSet checkRs = checkPs.executeQuery()) {
                         if (checkRs.next()) {
-                            request.getSession().setAttribute("errorMsg", "你已经对该商品发起过订单，请在\"\u6211的订单\"中查看");
+                            request.getSession().setAttribute("errorMsg", "你已经对该商品发起过订单，请在\"我的订单\"中查看");
                             response.sendRedirect(request.getContextPath() + "/orders?type=buy");
                             return;
                         }
@@ -297,7 +290,6 @@ public class OrderServlet extends HttpServlet {
             sql = "UPDATE orders SET order_status='CANCELLED', cancelled_at=NOW() " +
                   "WHERE order_id=? AND buyer_id=? AND order_status='CREATED'";
         } else if ("PAID_OFFLINE".equals(targetStatus)) {
-            // ★ 卖家确认线下成交时同步写入 pickup_code
             sql = "UPDATE orders SET order_status='PAID_OFFLINE', paid_at=NOW(), pickup_code=? " +
                   "WHERE order_id=? AND seller_id=? AND order_status='CREATED'";
         } else if ("COMPLETED".equals(targetStatus)) {
@@ -319,7 +311,6 @@ public class OrderServlet extends HttpServlet {
             conn.setAutoCommit(false);
 
             if ("PAID_OFFLINE".equals(targetStatus)) {
-                // pickup_code 占第 1 个参数
                 ps.setString(1, generatePickupCode());
                 ps.setInt(2, orderId);
                 ps.setInt(3, loginUser.getUserId());
@@ -335,7 +326,6 @@ public class OrderServlet extends HttpServlet {
             int rows = ps.executeUpdate();
 
             if (rows > 0) {
-                // 订单完成后联动商品改为 SOLD
                 if ("COMPLETED".equals(targetStatus)) {
                     String getProductIdSql = "SELECT product_id FROM orders WHERE order_id = ?";
                     try (PreparedStatement getPs = conn.prepareStatement(getProductIdSql)) {

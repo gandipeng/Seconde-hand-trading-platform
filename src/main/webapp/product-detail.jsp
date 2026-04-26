@@ -227,7 +227,7 @@
                 <div class="btn-row">
                     <a href="${pageContext.request.contextPath}/product-list" class="btn btn-default">返回列表</a>
 
-                    <%-- 收藏按鈕（自己的商品不显示） --%>
+                    <%-- 收藏按钮（自己的商品不显示） --%>
                     <% if (loginUser != null && !isOwner) { %>
                         <button id="favBtn"
                                 class="btn btn-fav <%= isFavorited ? "active" : "" %>"
@@ -241,7 +241,7 @@
                         </a>
                     <% } %>
 
-                    <%-- 发起交易按鈕：非商品本人、已登录、且商品未售出 --%>
+                    <%-- 发起交易按钮：非商品本人、已登录、且商品未售出 --%>
                     <% if (loginUser == null) { %>
                         <a href="${pageContext.request.contextPath}/login" class="btn btn-order">🛒 登录后发起交易</a>
                     <% } else if (!isOwner && !isSold) { %>
@@ -312,6 +312,11 @@
 </div>
 
 <script>
+/* ====================================================
+   Bug 1 修复：改用 URLSearchParams + 显式 Content-Type
+   原因：FormData 发送时 content-type 为 multipart/form-data，
+         Servlet 的 request.getParameter() 无法读取，导致返回"参数错误"
+   ==================================================== */
 function toggleFavorite(productId) {
     var btn = document.getElementById('favBtn');
     var icon = btn.querySelector('.fav-icon');
@@ -319,10 +324,11 @@ function toggleFavorite(productId) {
     var countEl = document.getElementById('favCountDisplay');
     btn.disabled = true;
 
-    var form = new FormData();
-    form.append('productId', productId);
-
-    fetch('${pageContext.request.contextPath}/favorite', { method: 'POST', body: form })
+    fetch('${pageContext.request.contextPath}/favorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'productId=' + encodeURIComponent(productId)
+    })
     .then(function(r){ return r.json(); })
     .then(function(data){
         if (data.needLogin) {

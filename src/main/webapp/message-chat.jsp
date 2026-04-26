@@ -180,8 +180,10 @@
 <% } } %>
 </div>
 
+<%-- Bug 2 修复：onsubmit 前端非空校验，防止空消息静默提交后被服务端 redirect 到列表页 --%>
 <div class="chat-input-area">
-    <form method="post" action="${pageContext.request.contextPath}/messages" id="msgForm">
+    <form method="post" action="${pageContext.request.contextPath}/messages" id="msgForm"
+          onsubmit="var v=document.getElementById('msgInput').value.trim(); if(!v){alert('消息内容不能为空');return false;}">
         <input type="hidden" name="receiverId" value="<%= otherId %>">
         <% if (productId != null) { %>
             <input type="hidden" name="productId" value="<%= productId %>">
@@ -204,7 +206,8 @@
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             var val = document.getElementById('msgInput').value.trim();
-            if (val) document.getElementById('msgForm').submit();
+            if (!val) { alert('消息内容不能为空'); return; }
+            document.getElementById('msgForm').submit();
         }
     }
 
