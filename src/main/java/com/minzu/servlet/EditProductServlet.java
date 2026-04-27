@@ -27,7 +27,14 @@ import java.util.UUID;
 )
 public class EditProductServlet extends HttpServlet {
 
-    private static final String UPLOAD_DIR = "D:/uploads/minzu-secondhand";
+    // Bug Fix: 图片路径从硬编码D盘改为动态读取，与PublishProductServlet保持一致
+    private static String getUploadDir() {
+        String dir = System.getProperty("upload.dir");
+        if (dir != null && !dir.trim().isEmpty()) {
+            return dir.trim();
+        }
+        return System.getProperty("user.home") + File.separator + "minzu-secondhand-uploads";
+    }
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -159,14 +166,15 @@ public class EditProductServlet extends HttpServlet {
             return;
         }
 
-        File uploadDir = new File(UPLOAD_DIR);
-        if (!uploadDir.exists()) uploadDir.mkdirs();
+        String uploadDir = getUploadDir();
+        File uploadDirFile = new File(uploadDir);
+        if (!uploadDirFile.exists()) uploadDirFile.mkdirs();
 
         String newCoverImageUrl = null;
         try {
             Part coverPart = request.getPart("coverImage");
             if (coverPart != null && coverPart.getSize() > 0) {
-                newCoverImageUrl = saveFile(coverPart, UPLOAD_DIR, request);
+                newCoverImageUrl = saveFile(coverPart, uploadDir, request);
             }
         } catch (Exception e) {
             e.printStackTrace();

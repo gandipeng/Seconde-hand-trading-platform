@@ -19,6 +19,9 @@ import java.util.*;
 @WebServlet("/messages")
 public class MessageServlet extends HttpServlet {
 
+    // 聊天记录每页条数
+    private static final int CHAT_PAGE_SIZE = 50;
+
     // ==================== GET ====================
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -59,8 +62,6 @@ public class MessageServlet extends HttpServlet {
         String content       = request.getParameter("content");
         String productIdStr  = request.getParameter("productId");
 
-        // Bug 2 修复：验证失败时 redirect 回聊天页而非直接跳消息列表，
-        // 避免用户看起来像是「发送没有反应」
         if (receiverIdStr == null || content == null || content.trim().isEmpty()) {
             String back = request.getContextPath() + "/messages";
             if (receiverIdStr != null && !receiverIdStr.trim().isEmpty()) {
@@ -118,17 +119,17 @@ public class MessageServlet extends HttpServlet {
                                       User loginUser) throws ServletException, IOException {
         int me = loginUser.getUserId();
 
+        // Bug Fix: 使用子查询取每个会话最新一条消息，避免GROUP_CONCAT截断（默认1024字节）
         String sql =
             "SELECT " +
-            "  other_id, " +
+            "  t.other_id, " +
             "  u.nickname AS other_nickname, " +
-            "  last_content, " +
-            "  last_time, " +
-            "  unread_count " +
+            "  t.last_content, " +
+            "  t.last_time, " +
+            "  t.unread_count " +
             "FROM ( " +
             "  SELECT " +
             "    IF(sender_id = ?, receiver_id, sender_id) AS other_id, " +
-            "    SUBSTRING_INDEX(GROUP_CONCAT(content ORDER BY created_at DESC SEPARATOR '|||'), '|||', 1) AS last_content, " +
             "    MAX(created_at) AS last_time, " +
             "    SUM(IF(receiver_id = ? AND is_read = 0, 1, 0)) AS unread_count " +
             "  FROM messages " +
@@ -136,7 +137,10 @@ public class MessageServlet extends HttpServlet {
             "  GROUP BY other_id " +
             ") t " +
             "JOIN users u ON u.user_id = t.other_id " +
-            "ORDER BY last_time DESC";
+            "JOIN messages lm ON lm.created_at = t.last_time " +
+            "  AND ((lm.sender_id = ? AND lm.receiver_id = t.other_id) " +
+            "    OR (lm.sender_id = t.other_id AND lm.receiver_id = ?)) " +
+            "ORDER BY t.last_time DESC";
 
         List<Map<String, Object>> conversations = new ArrayList<>();
         try (Connection conn = DBUtil.getConnection();
@@ -146,6 +150,8 @@ public class MessageServlet extends HttpServlet {
             ps.setInt(2, me);
             ps.setInt(3, me);
             ps.setInt(4, me);
+            ps.setInt(5, me);
+            ps.setInt(6, me);
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -190,6 +196,13 @@ public class MessageServlet extends HttpServlet {
             try { productId = Integer.parseInt(productIdStr.trim()); } catch (Exception ignored) {}
         }
 
+        // Bug Fix: 聊天记录支持分页，page参数控制当前页，默认最新一页
+        int chatPage = 1;
+        try {
+            String pageStr = request.getParameter("chatPage");
+            if (pageStr != null) chatPage = Math.max(1, Integer.parseInt(pageStr.trim()));
+        } catch (NumberFormatException ignored) {}
+
         request.setAttribute("otherId",       otherId);
         request.setAttribute("otherNickname", "用户" + otherId);
         request.setAttribute("product",       null);
@@ -228,6 +241,25 @@ public class MessageServlet extends HttpServlet {
                 }
             }
 
+            // Bug Fix: 聊天记录分页查询，每页50条，支持加载更多历史消息
+            String countSql =
+                "SELECT COUNT(*) FROM messages m " +
+                "WHERE ((m.sender_id = ? AND m.receiver_id = ?) " +
+                "    OR (m.sender_id = ? AND m.receiver_id = ?))";
+            int totalMsgCount = 0;
+            try (PreparedStatement ps = conn.prepareStatement(countSql)) {
+                ps.setInt(1, me); ps.setInt(2, otherId);
+                ps.setInt(3, otherId); ps.setInt(4, me);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) totalMsgCount = rs.getInt(1);
+                }
+            }
+            int totalChatPages = (int) Math.ceil((double) totalMsgCount / CHAT_PAGE_SIZE);
+            if (totalChatPages < 1) totalChatPages = 1;
+            // 默认展示最新一页
+            if (chatPage > totalChatPages) chatPage = totalChatPages;
+            int chatOffset = (chatPage - 1) * CHAT_PAGE_SIZE;
+
             String msgSql =
                 "SELECT m.message_id, m.sender_id, m.receiver_id, m.content, " +
                 "       m.is_read, m.created_at, " +
@@ -237,12 +269,14 @@ public class MessageServlet extends HttpServlet {
                 "WHERE ((m.sender_id = ? AND m.receiver_id = ?) " +
                 "    OR (m.sender_id = ? AND m.receiver_id = ?)) " +
                 "ORDER BY m.created_at ASC " +
-                "LIMIT 200";
+                "LIMIT ? OFFSET ?";
 
             List<Message> chatList = new ArrayList<>();
             try (PreparedStatement ps = conn.prepareStatement(msgSql)) {
                 ps.setInt(1, me);      ps.setInt(2, otherId);
                 ps.setInt(3, otherId); ps.setInt(4, me);
+                ps.setInt(5, CHAT_PAGE_SIZE);
+                ps.setInt(6, chatOffset);
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         Message msg = new Message();
@@ -258,6 +292,8 @@ public class MessageServlet extends HttpServlet {
                 }
             }
             request.setAttribute("chatList", chatList);
+            request.setAttribute("chatPage", chatPage);
+            request.setAttribute("totalChatPages", totalChatPages);
 
             String markSql = "UPDATE messages SET is_read=1 " +
                              "WHERE receiver_id=? AND sender_id=? AND is_read=0";

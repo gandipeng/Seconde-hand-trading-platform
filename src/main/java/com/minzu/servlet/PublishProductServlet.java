@@ -24,7 +24,15 @@ import java.util.UUID;
 )
 public class PublishProductServlet extends HttpServlet {
 
-    private static final String UPLOAD_DIR = "D:/uploads/minzu-secondhand";
+    // Bug Fix: 图片路径从硬编码D盘改为动态读取，优先读取系统属性 upload.dir，
+    // 默认使用 user.home 下的 minzu-secondhand-uploads 目录，兼容任何部署环境
+    private static String getUploadDir() {
+        String dir = System.getProperty("upload.dir");
+        if (dir != null && !dir.trim().isEmpty()) {
+            return dir.trim();
+        }
+        return System.getProperty("user.home") + File.separator + "minzu-secondhand-uploads";
+    }
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
@@ -109,9 +117,10 @@ public class PublishProductServlet extends HttpServlet {
             return;
         }
 
-        File uploadDir = new File(UPLOAD_DIR);
-        if (!uploadDir.exists()) {
-            uploadDir.mkdirs();
+        String uploadDir = getUploadDir();
+        File uploadDirFile = new File(uploadDir);
+        if (!uploadDirFile.exists()) {
+            uploadDirFile.mkdirs();
         }
 
         Connection conn = null;
@@ -120,7 +129,7 @@ public class PublishProductServlet extends HttpServlet {
         ResultSet generatedKeys = null;
 
         try {
-            String coverImageUrl = saveFile(coverPart, UPLOAD_DIR, request);
+            String coverImageUrl = saveFile(coverPart, uploadDir, request);
 
             conn = DBUtil.getConnection();
             conn.setAutoCommit(false);
@@ -166,7 +175,7 @@ public class PublishProductServlet extends HttpServlet {
 
             int sortOrder = 1;
             for (Part part : detailImageParts) {
-                String imageUrl = saveFile(part, UPLOAD_DIR, request);
+                String imageUrl = saveFile(part, uploadDir, request);
                 psImage.setLong(1, productId);
                 psImage.setString(2, imageUrl);
                 psImage.setInt(3, sortOrder++);

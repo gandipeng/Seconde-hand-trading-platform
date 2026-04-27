@@ -59,12 +59,8 @@ public class OrderServlet extends HttpServlet {
             }
 
             totalPages = (int) Math.ceil((double) totalCount / PAGE_SIZE);
-            if (totalPages < 1) {
-                totalPages = 1;
-            }
-            if (page > totalPages) {
-                page = totalPages;
-            }
+            if (totalPages < 1) totalPages = 1;
+            if (page > totalPages) page = totalPages;
             int offset = (page - 1) * PAGE_SIZE;
 
             String sql =
@@ -233,7 +229,8 @@ public class OrderServlet extends HttpServlet {
                             }
                         }
 
-                        String orderNo = "ORD" + System.currentTimeMillis();
+                        // Bug Fix: 使用UUID防止高并发下orderNo重复
+                        String orderNo = "ORD" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
                         try (PreparedStatement insertPs = conn.prepareStatement(insertSql)) {
                             insertPs.setString(1, orderNo);
                             insertPs.setInt(2, productId);
@@ -312,8 +309,10 @@ public class OrderServlet extends HttpServlet {
             return;
         }
 
-        try (Connection conn = DBUtil.getConnection();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+        // Bug Fix: 使用 try-finally 确保任何异常情况下都执行 rollback，防止连接状态异常
+        Connection conn = null;
+        try {
+            conn = DBUtil.getConnection();
             conn.setAutoCommit(false);
 
             Integer productId = lockProductForOrder(conn, orderId);
@@ -332,43 +331,55 @@ public class OrderServlet extends HttpServlet {
                 return;
             }
 
-            if ("PAID_OFFLINE".equals(targetStatus)) {
-                ps.setString(1, generatePickupCode());
-                ps.setInt(2, orderId);
-                ps.setInt(3, loginUser.getUserId());
-            } else if ("DISPUTED".equals(targetStatus)) {
-                ps.setInt(1, orderId);
-                ps.setInt(2, loginUser.getUserId());
-                ps.setInt(3, loginUser.getUserId());
-            } else {
-                ps.setInt(1, orderId);
-                ps.setInt(2, loginUser.getUserId());
-            }
-
-            int rows = ps.executeUpdate();
-            if (rows > 0) {
-                if ("COMPLETED".equals(targetStatus)) {
-                    String updateProductSql =
-                            "UPDATE products SET publish_status = 'SOLD' " +
-                            "WHERE product_id = ? AND publish_status IN ('ON_SALE', 'OFF_SHELF')";
-                    try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
-                        updPs.setInt(1, productId);
-                        updPs.executeUpdate();
-                    }
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                if ("PAID_OFFLINE".equals(targetStatus)) {
+                    ps.setString(1, generatePickupCode());
+                    ps.setInt(2, orderId);
+                    ps.setInt(3, loginUser.getUserId());
+                } else if ("DISPUTED".equals(targetStatus)) {
+                    ps.setInt(1, orderId);
+                    ps.setInt(2, loginUser.getUserId());
+                    ps.setInt(3, loginUser.getUserId());
+                } else {
+                    ps.setInt(1, orderId);
+                    ps.setInt(2, loginUser.getUserId());
                 }
 
-                conn.commit();
-                String msg = "COMPLETED".equals(targetStatus) ? "订单已完成，商品已标记为已售"
-                           : "PAID_OFFLINE".equals(targetStatus) ? "已确认线下成交，取货码已生成"
-                           : "订单状态已更新";
-                request.getSession().setAttribute("successMsg", msg);
-            } else {
-                conn.rollback();
-                request.getSession().setAttribute("errorMsg", "操作失败，可能订单状态已变更或无权操作");
+                int rows = ps.executeUpdate();
+                if (rows > 0) {
+                    if ("COMPLETED".equals(targetStatus)) {
+                        String updateProductSql =
+                                "UPDATE products SET publish_status = 'SOLD' " +
+                                "WHERE product_id = ? AND publish_status IN ('ON_SALE', 'OFF_SHELF')";
+                        try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
+                            updPs.setInt(1, productId);
+                            updPs.executeUpdate();
+                        }
+                    }
+                    conn.commit();
+                    String msg = "COMPLETED".equals(targetStatus) ? "订单已完成，商品已标记为已售"
+                               : "PAID_OFFLINE".equals(targetStatus) ? "已确认线下成交，取货码已生成"
+                               : "订单状态已更新";
+                    request.getSession().setAttribute("successMsg", msg);
+                } else {
+                    conn.rollback();
+                    request.getSession().setAttribute("errorMsg", "操作失败，可能订单状态已变更或无权操作");
+                }
             }
         } catch (Exception e) {
+            // Bug Fix: finally确保rollback，防止连接泄漏
+            if (conn != null) {
+                try { conn.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
+            }
             e.printStackTrace();
             request.getSession().setAttribute("errorMsg", "操作失败：" + e.getMessage());
+        } finally {
+            if (conn != null) {
+                try {
+                    conn.setAutoCommit(true);
+                    conn.close();
+                } catch (SQLException ex) { ex.printStackTrace(); }
+            }
         }
 
         response.sendRedirect(request.getContextPath() + "/orders?type=" + type);
