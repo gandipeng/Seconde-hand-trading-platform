@@ -128,7 +128,7 @@
         <div class="product-grid">
         <% for (Product p : favoriteList) {
             boolean isSold    = "SOLD".equals(p.getProductStatus());
-            boolean isOffline = "OFFLINE".equals(p.getProductStatus());
+            boolean isOffline = "OFF_SHELF".equals(p.getProductStatus());
         %>
             <div class="product-card" id="card-<%= p.getProductId() %>">
                 <div class="card-cover">

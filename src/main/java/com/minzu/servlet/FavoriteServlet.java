@@ -124,7 +124,7 @@ public class FavoriteServlet extends HttpServlet {
                                   User loginUser) throws ServletException, IOException {
         String sql =
             "SELECT p.product_id, p.title, p.price, p.original_price, " +
-            "       p.cover_image_url, p.product_status, p.view_count, p.favorite_count, " +
+            "       p.cover_image_url, p.publish_status, p.view_count, p.favorite_count, " +
             "       p.created_at, c.category_name, u.nickname AS seller_name, " +
             "       f.created_at AS favorited_at " +
             "FROM favorites f " +
@@ -148,7 +148,7 @@ public class FavoriteServlet extends HttpServlet {
                     BigDecimal op = rs.getBigDecimal("original_price");
                     p.setOriginalPrice(op);
                     p.setCoverImageUrl(rs.getString("cover_image_url"));
-                    p.setProductStatus(rs.getString("product_status"));
+                    p.setProductStatus(rs.getString("publish_status"));
                     p.setViewCount(rs.getInt("view_count"));
                     p.setFavoriteCount(rs.getInt("favorite_count"));
                     p.setCreatedAt(rs.getTimestamp("created_at"));

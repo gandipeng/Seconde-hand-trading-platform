@@ -87,7 +87,7 @@ public class AdminProductReviewServlet extends HttpServlet {
         String tab         = req.getParameter("tab");
         if (tab == null) tab = "pending";
 
-        if (productIdStr == null || (!\ "approve".equals(action) && !"reject".equals(action))) {
+        if (productIdStr == null || (! "approve".equals(action) && !"reject".equals(action))) {
             resp.sendRedirect(req.getContextPath() + "/admin/products");
             return;
         }

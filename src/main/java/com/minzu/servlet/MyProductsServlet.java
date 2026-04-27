@@ -44,10 +44,9 @@ public class MyProductsServlet extends HttpServlet {
 
         List<Product> productList = new ArrayList<>();
 
-        try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql.toString())
-        ) {
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+
             ps.setInt(1, loginUser.getUserId());
             if (statusFilter != null && !statusFilter.trim().isEmpty()) {
                 ps.setString(2, statusFilter.trim());
@@ -113,35 +112,37 @@ public class MyProductsServlet extends HttpServlet {
         }
 
         if ("offshelf".equals(action)) {
-            updateStatus(request, response, loginUser.getUserId(), productId, "OFFLINE", "商品已下架");
+            updateStatus(request, response, loginUser.getUserId(), productId,
+                    "ON_SALE", "OFF_SHELF", "商品已下架");
         } else if ("onshelf".equals(action)) {
-            updateStatus(request, response, loginUser.getUserId(), productId, "AVAILABLE", "商品已重新上架");
+            updateStatus(request, response, loginUser.getUserId(), productId,
+                    "OFF_SHELF", "ON_SALE", "商品已重新上架");
         } else {
             response.sendRedirect(request.getContextPath() + "/my-products");
         }
     }
 
     private void updateStatus(HttpServletRequest request, HttpServletResponse response,
-                              int loginUserId, int productId, String newStatus, String successMsg)
-            throws IOException {
+                              int loginUserId, int productId, String fromStatus,
+                              String newStatus, String successMsg) throws IOException {
 
-        // 使用正确的字段名 publish_status
         String sql = "UPDATE products SET publish_status = ?, updated_at = NOW() " +
-                "WHERE product_id = ? AND seller_id = ? AND IFNULL(is_deleted, 0) = 0";
+                "WHERE product_id = ? AND seller_id = ? AND publish_status = ? " +
+                "AND IFNULL(is_deleted, 0) = 0";
 
-        try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)
-        ) {
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
             ps.setString(1, newStatus);
             ps.setInt(2, productId);
             ps.setInt(3, loginUserId);
+            ps.setString(4, fromStatus);
             int rows = ps.executeUpdate();
 
             if (rows > 0) {
                 request.getSession().setAttribute("successMsg", successMsg);
             } else {
-                request.getSession().setAttribute("errorMsg", "操作失败，未找到对应商品");
+                request.getSession().setAttribute("errorMsg", "操作失败，商品状态可能已变更");
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -21,10 +21,10 @@ public class ProductListServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
 
-        User loginUser = (User) request.getSession().getAttribute("loginUser");
-        if (loginUser == null) {
-            response.sendRedirect(request.getContextPath() + "/login");
-            return;
+        User loginUser = null;
+        HttpSession session = request.getSession(false);
+        if (session != null) {
+            loginUser = (User) session.getAttribute("loginUser");
         }
 
         String keyword     = request.getParameter("keyword");
@@ -111,6 +111,7 @@ public class ProductListServlet extends HttpServlet {
         }
 
         request.setAttribute("products",    products);
+        request.setAttribute("loginUser",   loginUser);
         request.setAttribute("keyword",     keyword);
         request.setAttribute("categoryId",  categoryIdStr);
         request.setAttribute("currentPage", page);

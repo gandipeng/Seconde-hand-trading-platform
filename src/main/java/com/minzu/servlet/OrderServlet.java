@@ -35,8 +35,11 @@ public class OrderServlet extends HttpServlet {
         int page = 1;
         try {
             String pageStr = request.getParameter("page");
-            if (pageStr != null) page = Math.max(1, Integer.parseInt(pageStr.trim()));
-        } catch (NumberFormatException ignored) {}
+            if (pageStr != null) {
+                page = Math.max(1, Integer.parseInt(pageStr.trim()));
+            }
+        } catch (NumberFormatException ignored) {
+        }
 
         String whereClause = "sell".equals(type) ? "o.seller_id = ?" : "o.buyer_id = ?";
 
@@ -45,22 +48,25 @@ public class OrderServlet extends HttpServlet {
         List<Map<String, Object>> orderList = new ArrayList<>();
 
         try (Connection conn = DBUtil.getConnection()) {
-
-            // 查总数
             String countSql = "SELECT COUNT(*) FROM orders o WHERE " + whereClause;
             try (PreparedStatement ps = conn.prepareStatement(countSql)) {
                 ps.setInt(1, loginUser.getUserId());
                 try (ResultSet rs = ps.executeQuery()) {
-                    if (rs.next()) totalCount = rs.getInt(1);
+                    if (rs.next()) {
+                        totalCount = rs.getInt(1);
+                    }
                 }
             }
 
             totalPages = (int) Math.ceil((double) totalCount / PAGE_SIZE);
-            if (totalPages < 1) totalPages = 1;
-            if (page > totalPages) page = totalPages;
+            if (totalPages < 1) {
+                totalPages = 1;
+            }
+            if (page > totalPages) {
+                page = totalPages;
+            }
             int offset = (page - 1) * PAGE_SIZE;
 
-            // fix: real_name -> nickname，与 users 表实际字段一致
             String sql =
                     "SELECT o.order_id, o.order_no, o.product_id, o.deal_price, o.quantity, " +
                     "o.order_status, o.buyer_note, o.seller_note, o.pickup_code, " +
@@ -84,24 +90,24 @@ public class OrderServlet extends HttpServlet {
                 try (ResultSet rs = ps.executeQuery()) {
                     while (rs.next()) {
                         Map<String, Object> row = new LinkedHashMap<>();
-                        row.put("orderId",       rs.getInt("order_id"));
-                        row.put("orderNo",       rs.getString("order_no"));
-                        row.put("productId",     rs.getInt("product_id"));
-                        row.put("title",         rs.getString("title"));
+                        row.put("orderId", rs.getInt("order_id"));
+                        row.put("orderNo", rs.getString("order_no"));
+                        row.put("productId", rs.getInt("product_id"));
+                        row.put("title", rs.getString("title"));
                         row.put("coverImageUrl", rs.getString("cover_image_url"));
-                        row.put("dealPrice",     rs.getBigDecimal("deal_price"));
-                        row.put("quantity",      rs.getInt("quantity"));
-                        row.put("orderStatus",   rs.getString("order_status"));
-                        row.put("buyerNote",     rs.getString("buyer_note"));
-                        row.put("sellerNote",    rs.getString("seller_note"));
-                        row.put("pickupCode",    rs.getString("pickup_code"));
-                        row.put("createdAt",     rs.getTimestamp("created_at"));
-                        row.put("paidAt",        rs.getTimestamp("paid_at"));
-                        row.put("completedAt",   rs.getTimestamp("completed_at"));
-                        row.put("cancelledAt",   rs.getTimestamp("cancelled_at"));
-                        row.put("updatedAt",     rs.getTimestamp("updated_at"));
-                        row.put("buyerName",     rs.getString("buyer_name"));
-                        row.put("sellerName",    rs.getString("seller_name"));
+                        row.put("dealPrice", rs.getBigDecimal("deal_price"));
+                        row.put("quantity", rs.getInt("quantity"));
+                        row.put("orderStatus", rs.getString("order_status"));
+                        row.put("buyerNote", rs.getString("buyer_note"));
+                        row.put("sellerNote", rs.getString("seller_note"));
+                        row.put("pickupCode", rs.getString("pickup_code"));
+                        row.put("createdAt", rs.getTimestamp("created_at"));
+                        row.put("paidAt", rs.getTimestamp("paid_at"));
+                        row.put("completedAt", rs.getTimestamp("completed_at"));
+                        row.put("cancelledAt", rs.getTimestamp("cancelled_at"));
+                        row.put("updatedAt", rs.getTimestamp("updated_at"));
+                        row.put("buyerName", rs.getString("buyer_name"));
+                        row.put("sellerName", rs.getString("seller_name"));
                         orderList.add(row);
                     }
                 }
@@ -112,11 +118,11 @@ public class OrderServlet extends HttpServlet {
             request.setAttribute("errorMsg", "加载订单失败：" + e.getMessage());
         }
 
-        request.setAttribute("type",        type);
-        request.setAttribute("orderList",   orderList);
+        request.setAttribute("type", type);
+        request.setAttribute("orderList", orderList);
         request.setAttribute("currentPage", page);
-        request.setAttribute("totalPages",  totalPages);
-        request.setAttribute("totalCount",  totalCount);
+        request.setAttribute("totalPages", totalPages);
+        request.setAttribute("totalCount", totalCount);
         request.getRequestDispatcher("/my-orders.jsp").forward(request, response);
     }
 
@@ -171,81 +177,89 @@ public class OrderServlet extends HttpServlet {
         }
 
         String productSql =
-                "SELECT product_id, seller_id, title, price, publish_status " +
-                "FROM products WHERE product_id = ? AND IFNULL(is_deleted, 0) = 0";
+                "SELECT product_id, seller_id, price, publish_status " +
+                "FROM products WHERE product_id = ? AND IFNULL(is_deleted, 0) = 0 FOR UPDATE";
 
         String checkSql =
                 "SELECT 1 FROM orders " +
-                "WHERE product_id = ? AND buyer_id = ? AND order_status IN ('CREATED','PAID_OFFLINE','DISPUTED')";
+                "WHERE product_id = ? AND order_status IN ('CREATED','PAID_OFFLINE','DISPUTED') " +
+                "LIMIT 1";
 
         String insertSql =
                 "INSERT INTO orders " +
                 "(order_no, product_id, buyer_id, seller_id, deal_price, quantity, order_status, buyer_note) " +
                 "VALUES (?, ?, ?, ?, ?, ?, 'CREATED', ?)";
 
-        try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement productPs = conn.prepareStatement(productSql)
-        ) {
-            productPs.setInt(1, productId);
-
-            try (ResultSet rs = productPs.executeQuery()) {
-                if (!rs.next()) {
-                    request.getSession().setAttribute("errorMsg", "商品不存在");
-                    response.sendRedirect(request.getContextPath() + "/product-list");
-                    return;
-                }
-
-                int sellerId = rs.getInt("seller_id");
-                BigDecimal price = rs.getBigDecimal("price");
-                String publishStatus = rs.getString("publish_status");
-
-                if (sellerId == loginUser.getUserId()) {
-                    request.getSession().setAttribute("errorMsg", "不能购买自己的商品");
-                    response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
-                    return;
-                }
-
-                if (!"ON_SALE".equalsIgnoreCase(publishStatus)) {
-                    request.getSession().setAttribute("errorMsg", "该商品当前不可交易");
-                    response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
-                    return;
-                }
-
-                try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
-                    checkPs.setInt(1, productId);
-                    checkPs.setInt(2, loginUser.getUserId());
-                    try (ResultSet checkRs = checkPs.executeQuery()) {
-                        if (checkRs.next()) {
-                            request.getSession().setAttribute("errorMsg", "你已经对该商品发起过订单，请在\"我的订单\"中查看");
-                            response.sendRedirect(request.getContextPath() + "/orders?type=buy");
+        try (Connection conn = DBUtil.getConnection()) {
+            conn.setAutoCommit(false);
+            try {
+                try (PreparedStatement productPs = conn.prepareStatement(productSql)) {
+                    productPs.setInt(1, productId);
+                    try (ResultSet rs = productPs.executeQuery()) {
+                        if (!rs.next()) {
+                            conn.rollback();
+                            request.getSession().setAttribute("errorMsg", "商品不存在");
+                            response.sendRedirect(request.getContextPath() + "/product-list");
                             return;
+                        }
+
+                        int sellerId = rs.getInt("seller_id");
+                        BigDecimal price = rs.getBigDecimal("price");
+                        String publishStatus = rs.getString("publish_status");
+
+                        if (sellerId == loginUser.getUserId()) {
+                            conn.rollback();
+                            request.getSession().setAttribute("errorMsg", "不能购买自己的商品");
+                            response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
+                            return;
+                        }
+
+                        if (!"ON_SALE".equalsIgnoreCase(publishStatus)) {
+                            conn.rollback();
+                            request.getSession().setAttribute("errorMsg", "该商品当前不可交易");
+                            response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
+                            return;
+                        }
+
+                        try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
+                            checkPs.setInt(1, productId);
+                            try (ResultSet checkRs = checkPs.executeQuery()) {
+                                if (checkRs.next()) {
+                                    conn.rollback();
+                                    request.getSession().setAttribute("errorMsg", "该商品已有进行中的订单，请稍后再试");
+                                    response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
+                                    return;
+                                }
+                            }
+                        }
+
+                        String orderNo = "ORD" + System.currentTimeMillis();
+                        try (PreparedStatement insertPs = conn.prepareStatement(insertSql)) {
+                            insertPs.setString(1, orderNo);
+                            insertPs.setInt(2, productId);
+                            insertPs.setInt(3, loginUser.getUserId());
+                            insertPs.setInt(4, sellerId);
+                            insertPs.setBigDecimal(5, price);
+                            insertPs.setInt(6, 1);
+                            insertPs.setString(7, (buyerNote != null && !buyerNote.trim().isEmpty()) ? buyerNote.trim() : null);
+
+                            int rows = insertPs.executeUpdate();
+                            if (rows > 0) {
+                                conn.commit();
+                                request.getSession().setAttribute("successMsg", "订单已创建，请等待卖家确认");
+                                response.sendRedirect(request.getContextPath() + "/orders?type=buy");
+                            } else {
+                                conn.rollback();
+                                request.getSession().setAttribute("errorMsg", "下单失败，请重试");
+                                response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
+                            }
                         }
                     }
                 }
-
-                String orderNo = "ORD" + System.currentTimeMillis();
-
-                try (PreparedStatement insertPs = conn.prepareStatement(insertSql)) {
-                    insertPs.setString(1, orderNo);
-                    insertPs.setInt(2, productId);
-                    insertPs.setInt(3, loginUser.getUserId());
-                    insertPs.setInt(4, sellerId);
-                    insertPs.setBigDecimal(5, price);
-                    insertPs.setInt(6, 1);
-                    insertPs.setString(7, (buyerNote != null && !buyerNote.trim().isEmpty()) ? buyerNote.trim() : null);
-
-                    int rows = insertPs.executeUpdate();
-                    if (rows > 0) {
-                        request.getSession().setAttribute("successMsg", "订单已创建，请等待卖家确认");
-                        response.sendRedirect(request.getContextPath() + "/orders?type=buy");
-                    } else {
-                        request.getSession().setAttribute("errorMsg", "下单失败，请重试");
-                        response.sendRedirect(request.getContextPath() + "/product-detail?id=" + productId);
-                    }
-                }
+            } catch (Exception e) {
+                conn.rollback();
+                throw e;
             }
-
         } catch (Exception e) {
             e.printStackTrace();
             request.getSession().setAttribute("errorMsg", "下单失败：" + e.getMessage());
@@ -280,7 +294,6 @@ public class OrderServlet extends HttpServlet {
         }
 
         String sql;
-
         if ("CANCELLED".equals(targetStatus)) {
             sql = "UPDATE orders SET order_status='CANCELLED', cancelled_at=NOW() " +
                   "WHERE order_id=? AND buyer_id=? AND order_status='CREATED'";
@@ -299,11 +312,25 @@ public class OrderServlet extends HttpServlet {
             return;
         }
 
-        try (
-                Connection conn = DBUtil.getConnection();
-                PreparedStatement ps = conn.prepareStatement(sql)
-        ) {
+        try (Connection conn = DBUtil.getConnection();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
             conn.setAutoCommit(false);
+
+            Integer productId = lockProductForOrder(conn, orderId);
+            if (productId == null) {
+                conn.rollback();
+                request.getSession().setAttribute("errorMsg", "订单不存在或商品已被删除");
+                response.sendRedirect(request.getContextPath() + "/orders?type=" + type);
+                return;
+            }
+
+            if (("PAID_OFFLINE".equals(targetStatus) || "COMPLETED".equals(targetStatus))
+                    && hasOtherActiveOrders(conn, productId, orderId)) {
+                conn.rollback();
+                request.getSession().setAttribute("errorMsg", "该商品存在其他进行中的订单，请先处理后再继续");
+                response.sendRedirect(request.getContextPath() + "/orders?type=" + type);
+                return;
+            }
 
             if ("PAID_OFFLINE".equals(targetStatus)) {
                 ps.setString(1, generatePickupCode());
@@ -319,24 +346,14 @@ public class OrderServlet extends HttpServlet {
             }
 
             int rows = ps.executeUpdate();
-
             if (rows > 0) {
                 if ("COMPLETED".equals(targetStatus)) {
-                    String getProductIdSql = "SELECT product_id FROM orders WHERE order_id = ?";
-                    try (PreparedStatement getPs = conn.prepareStatement(getProductIdSql)) {
-                        getPs.setInt(1, orderId);
-                        try (ResultSet rs = getPs.executeQuery()) {
-                            if (rs.next()) {
-                                int productId = rs.getInt("product_id");
-                                String updateProductSql =
-                                        "UPDATE products SET publish_status = 'SOLD' " +
-                                        "WHERE product_id = ? AND publish_status = 'ON_SALE'";
-                                try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
-                                    updPs.setInt(1, productId);
-                                    updPs.executeUpdate();
-                                }
-                            }
-                        }
+                    String updateProductSql =
+                            "UPDATE products SET publish_status = 'SOLD' " +
+                            "WHERE product_id = ? AND publish_status IN ('ON_SALE', 'OFF_SHELF')";
+                    try (PreparedStatement updPs = conn.prepareStatement(updateProductSql)) {
+                        updPs.setInt(1, productId);
+                        updPs.executeUpdate();
                     }
                 }
 
@@ -349,12 +366,41 @@ public class OrderServlet extends HttpServlet {
                 conn.rollback();
                 request.getSession().setAttribute("errorMsg", "操作失败，可能订单状态已变更或无权操作");
             }
-
         } catch (Exception e) {
             e.printStackTrace();
             request.getSession().setAttribute("errorMsg", "操作失败：" + e.getMessage());
         }
 
         response.sendRedirect(request.getContextPath() + "/orders?type=" + type);
+    }
+
+    private Integer lockProductForOrder(Connection conn, int orderId) throws SQLException {
+        String sql =
+                "SELECT p.product_id " +
+                "FROM orders o " +
+                "JOIN products p ON p.product_id = o.product_id " +
+                "WHERE o.order_id = ? AND IFNULL(p.is_deleted, 0) = 0 " +
+                "FOR UPDATE";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, orderId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next() ? rs.getInt("product_id") : null;
+            }
+        }
+    }
+
+    private boolean hasOtherActiveOrders(Connection conn, int productId, int currentOrderId) throws SQLException {
+        String sql =
+                "SELECT 1 FROM orders " +
+                "WHERE product_id = ? AND order_id <> ? " +
+                "AND order_status IN ('CREATED','PAID_OFFLINE','DISPUTED') " +
+                "LIMIT 1";
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, productId);
+            ps.setInt(2, currentOrderId);
+            try (ResultSet rs = ps.executeQuery()) {
+                return rs.next();
+            }
+        }
     }
 }
